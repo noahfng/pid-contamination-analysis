@@ -1,0 +1,5 @@
+# Ignore entire data folder
+/UD_LHC23_pass4_SingleGap/
+
+# Ignore all PDFs (if you regenerate them)
+/*.pdf
