@@ -125,9 +125,9 @@ void Calculate_Invariant_Mass() {
     for (int i = 0; i < 6; ++i) {
         h2Mpt[i] = new TH2F(
             Form("h2Mpt_%s", names[i]),
-            Form("M vs p_{T} %s; p_{T} (GeV/#it{c}); M (GeV/#it{c}^{2})", names[i]),
-            nPtBins, 0.0, ptMax,
-            100,     0.0, 5.0
+            Form("Mass vs p_{T} %s; M (GeV/#it{c}^{2}); p_{T} (GeV/#it{c})", names[i]),
+            100, 0.0, 5.0,
+            nPtBins, 0.0, ptMax
         );
         h2Mpt[i]->SetLineColor(colors[i]);}
 
@@ -153,14 +153,14 @@ void Calculate_Invariant_Mass() {
             Float_t pzsum = pz[0] + pz[1];
             Float_t M2 = Esum*Esum - (pxsum*pxsum + pysum*pysum + pzsum*pzsum);
             
-            if (M2 > 0) { 
-                hM[j]->Fill(TMath::Sqrt(M2));}
-            if (plotMvsPT && M2 > 0) { 
-                Double_t pxsum = px[0] + px[1];
-                Double_t pysum = py[0] + py[1];
-                Double_t pT    = std::hypot(pxsum, pysum);
-                h2Mpt[j]->Fill(pT, std::sqrt(M2));
-            } 
+            if (M2 > 0) {
+                hM[j]->Fill(std::sqrt(M2));}
+            if (plotMvsPT && M2 > 0) {
+                for (int it = 0; it < 2; ++it) {
+                    Double_t pT_i = std::hypot(px[it], py[it]);  
+                    h2Mpt[j]->Fill(std::sqrt(M2), pT_i);
+                }
+        }
         }
         bool piK = true, Kpi = true;
         if (applyTPCnSigmaFilter) {
@@ -189,13 +189,12 @@ void Calculate_Invariant_Mass() {
         if (M2 > 0) {
             hM[5]->Fill(std::sqrt(M2));}
         if (plotMvsPT && M2 > 0) {
-            Double_t pxsum = px[0] + px[1];
-            Double_t pysum = py[0] + py[1];
-            Double_t pT    = std::hypot(pxsum, pysum);
-            h2Mpt[5]->Fill(pT, std::sqrt(M2));
+            for (int it = 0; it < 2; ++it) {
+                Double_t pT_i = std::hypot(px[it], py[it]);  
+                h2Mpt[5]->Fill(std::sqrt(M2), pT_i);
+                }
         }
     }
-
     for (int ih = 0; ih < 6; ++ih) {
     Double_t integ = hM[ih]->GetEntries();
     if (integ > 0) hM[ih]->Scale(1.0/integ);
