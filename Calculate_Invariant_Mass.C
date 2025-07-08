@@ -72,6 +72,16 @@ void Calculate_Invariant_Mass() {
     const bool applyTOFEventfilter = false;
     const bool applyTOFnSigmaFilter = false;
     const bool plotMvsPT = true;
+    const bool plotSysPt = false;
+    const bool plotTrackPt = true; // if both true, the 2D plot will show plotSysPt only
+    const bool do2D = plotMvsPT && (plotSysPt || plotTrackPt);
+    const char* yTitle;
+    if (plotSysPt) {
+        yTitle = "p_{T,sys} (GeV/#it{c})";
+    } else if (plotTrackPt) {
+        yTitle = "p_{T,track} (GeV/#it{c})";
+    }
+    
 
     const Float_t nSigmaTPC = 3.0; 
     const Float_t nSigmaTOF = 3.0; 
@@ -125,7 +135,7 @@ void Calculate_Invariant_Mass() {
     for (int i = 0; i < 6; ++i) {
         h2Mpt[i] = new TH2F(
             Form("h2Mpt_%s", names[i]),
-            Form("Mass vs p_{T} %s; M (GeV/#it{c}^{2}); p_{T} (GeV/#it{c})", names[i]),
+            Form("Mass vs p_{T} %s; M (GeV/#it{c}^{2}); %s", names[i], yTitle),
             100, 0.0, 5.0,
             nPtBins, 0.0, ptMax
         );
@@ -155,12 +165,22 @@ void Calculate_Invariant_Mass() {
             
             if (M2 > 0) {
                 hM[j]->Fill(std::sqrt(M2));}
-            if (plotMvsPT && M2 > 0) {
-                for (int it = 0; it < 2; ++it) {
-                    Double_t pT_i = std::hypot(px[it], py[it]);  
-                    h2Mpt[j]->Fill(std::sqrt(M2), pT_i);
+            if (do2D && M2 > 0) {
+                Double_t mass = std::sqrt(M2);
+                if (plotSysPt) {
+                    Double_t pxsum = px[0] + px[1];
+                    Double_t pysum = py[0] + py[1];
+                    Double_t pTsys = std::hypot(pxsum, pysum);
+                    h2Mpt[j]->Fill(mass, pTsys);
                 }
-        }
+
+                else if (plotTrackPt) {
+                    for (int it = 0; it < 2; ++it) {
+                    Double_t pT_i = std::hypot(px[it], py[it]);
+                    h2Mpt[j]->Fill(mass, pT_i);
+                    }
+                }
+            }
         }
         bool piK = true, Kpi = true;
         if (applyTPCnSigmaFilter) {
@@ -186,13 +206,20 @@ void Calculate_Invariant_Mass() {
         Double_t pzsum = pz[0] + pz[1];
         Double_t M2 = Esum*Esum - (pxsum*pxsum + pysum*pysum + pzsum*pzsum);
 
-        if (M2 > 0) {
-            hM[5]->Fill(std::sqrt(M2));}
-        if (plotMvsPT && M2 > 0) {
-            for (int it = 0; it < 2; ++it) {
-                Double_t pT_i = std::hypot(px[it], py[it]);  
-                h2Mpt[5]->Fill(std::sqrt(M2), pT_i);
+        if (do2D && M2>0) {
+            Double_t mass = std::sqrt(M2);
+            if (plotSysPt) {
+                Double_t pxsum = px[0] + px[1];
+                Double_t pysum = py[0] + py[1];
+                Double_t pTsys = std::hypot(pxsum, pysum);
+                h2Mpt[5]->Fill(mass, pTsys);
+            }
+            else if (plotTrackPt) {
+                for (int it = 0; it < 2; ++it) {
+                Double_t pT_i = std::hypot(px[it], py[it]);
+                h2Mpt[5]->Fill(mass, pT_i);
                 }
+            }
         }
     }
     for (int ih = 0; ih < 6; ++ih) {
@@ -236,7 +263,7 @@ void Calculate_Invariant_Mass() {
 
     c.Print("InvariantMass.pdf]");    
 
-    if (plotMvsPT) {
+    if (do2D) {
         TCanvas c2("c2","M vs pT",800,600);
         c2.Print("M_vs_PT.pdf[");
         for (int i = 0; i < 6; ++i) {
