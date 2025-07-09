@@ -24,46 +24,7 @@
 #include <vector>
 #include <algorithm>
 #include <iostream>
-
-
-void AddTrees(TChain &chain, const char* baseDir) {
-    TSystemDirectory dir("base", baseDir);
-    TList *subdirs = dir.GetListOfFiles();
-    TSystemFile *sysfile;
-    TIterator *itSub = subdirs->MakeIterator();
-    while ((sysfile = (TSystemFile*)itSub->Next())) {
-        TString dname = sysfile->GetName();
-        if (!sysfile->IsDirectory() || !dname.BeginsWith("hy_")) continue;
-        TString fullDir = TString(baseDir) + "/" + dname;
-
-        TSystemDirectory subdir(dname, fullDir);
-        TList *files = subdir.GetListOfFiles();
-        TSystemFile *f2;
-        TIterator *itFile = files->MakeIterator();
-        while ((f2 = (TSystemFile*)itFile->Next())) {
-            TString fname = f2->GetName();
-            if (!fname.BeginsWith("RLAnalysisTree") || !fname.EndsWith(".root")) continue;
-            TString path = fullDir + "/" + fname;
-
-            TFile tf(path, "READ");
-            if (tf.IsZombie()) { tf.Close(); continue; }
-            TIterator *itKey = tf.GetListOfKeys()->MakeIterator();
-            TKey *key;
-            while ((key = (TKey*)itKey->Next())) {
-                TString keyName = key->GetName();
-                if (keyName.BeginsWith("DF_")) {
-                    chain.Add(path + "/" + keyName + "/O2tautwotrack");
-                    break;
-                }
-            }
-            delete itKey;
-            tf.Close();
-        }
-        delete itFile;
-    }
-    delete itSub;
-}
-
+#include "finished_projects/AddTrees.h"
 
 void Calculate_Invariant_Mass() {
     gROOT->SetBatch(kTRUE); 
@@ -75,7 +36,7 @@ void Calculate_Invariant_Mass() {
     const bool applyTOFEventfilter = false; 
     const bool applyTOFnSigmaFilter = false; 
     const Float_t nSigmaTOF = 3.0;
-    const bool plotMvsPT = true;
+    const bool plotMvsPT = false;
     const bool plotSysPt = false;
     const bool plotTrackPt = true; // if both true, the 2D plot will show plotSysPt only
     const bool do2D = plotMvsPT && (plotSysPt || plotTrackPt);
@@ -87,7 +48,7 @@ void Calculate_Invariant_Mass() {
     }
     TChain chain("twotauchain");
     AddTrees(chain, baseDir);
-    Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(1e6));
+    Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(1e9));
     chain.SetBranchStatus("*", 0);
     chain.SetBranchStatus("fTrkPx", 1);
     chain.SetBranchStatus("fTrkPy", 1);
