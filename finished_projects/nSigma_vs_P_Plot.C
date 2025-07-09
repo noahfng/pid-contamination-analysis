@@ -29,7 +29,7 @@ Double_t get_expected_signal(Double_t p, Double_t mass, Double_t charge) {
     return bethe >= 0 ? bethe : -999.;
 }
 
-void nSigmavsP_Plot() {
+void nSigma_vs_P_Plot() {
     gROOT->SetBatch(kTRUE);
     gStyle->SetOptStat(0);
     gStyle->SetPalette(kRainBow);

@@ -30,7 +30,7 @@ Double_t get_expected_signal(Double_t p, Double_t mass, Double_t charge) {
     return bethe >= 0 ? bethe : -999.;
 }
 
-void Bethe_Bloch() {
+void dEdx_vs_p() {
     gStyle->SetPalette(kRainBow);
     const char* base_dir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
     TChain chain("twotauchain");
