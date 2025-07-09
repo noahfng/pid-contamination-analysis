@@ -9,6 +9,7 @@
 #include <TLegend.h>
 #include <TMath.h>
 #include <vector>
+#include "AddTrees.h"
 
 Double_t bethe_bloch_aleph(Double_t bg, Double_t p1, Double_t p2, Double_t p3, Double_t p4, Double_t p5) {
     Double_t beta = bg / TMath::Sqrt(1.0 + bg*bg);
@@ -30,44 +31,6 @@ Double_t get_expected_signal(Double_t p, Double_t mass, Double_t charge) {
                                        params[3], params[4])
                    * TMath::Power(charge, chFact);
     return bethe >= 0 ? bethe : -999.;
-}
-
-void AddTrees(TChain &chain, const char* baseDir) {
-    TSystemDirectory dir("base", baseDir);
-    TList *subdirs = dir.GetListOfFiles();
-    TSystemFile *sysfile;
-    TIterator *itSub = subdirs->MakeIterator();
-    while ((sysfile = (TSystemFile*)itSub->Next())) {
-        TString dname = sysfile->GetName();
-        if (!sysfile->IsDirectory() || !dname.BeginsWith("hy_")) continue;
-        TString fullDir = TString(baseDir) + "/" + dname;
-
-        TSystemDirectory subdir(dname, fullDir);
-        TList *files = subdir.GetListOfFiles();
-        TSystemFile *f2;
-        TIterator *itFile = files->MakeIterator();
-        while ((f2 = (TSystemFile*)itFile->Next())) {
-            TString fname = f2->GetName();
-            if (!fname.BeginsWith("RLAnalysisTree") || !fname.EndsWith(".root")) continue;
-            TString path = fullDir + "/" + fname;
-
-            TFile tf(path, "READ");
-            if (tf.IsZombie()) { tf.Close(); continue; }
-            TIterator *itKey = tf.GetListOfKeys()->MakeIterator();
-            TKey *key;
-            while ((key = (TKey*)itKey->Next())) {
-                TString keyName = key->GetName();
-                if (keyName.BeginsWith("DF_")) {
-                    chain.Add(path + "/" + keyName + "/O2tautwotrack");
-                    break;
-                }
-            }
-            delete itKey;
-            tf.Close();
-        }
-        delete itFile;
-    }
-    delete itSub;
 }
 
 void Bethe_Bloch() {
