@@ -100,10 +100,22 @@ void Bethe_Bloch() {
     }
 
     const Int_t nParts = 5;
-    const TString names[nParts]   = {"pi","K","p","mu","e"};
-    const Double_t masses[nParts] = {139.57039, 493.677, 938.27208816, 105.6583755, 0.51099895};
-    const Double_t charges[nParts]= {1,1,1,1,1};
-    const Int_t colors[nParts]    = {kBlue, kRed, kGreen+2, kOrange+7, kViolet};
+    const TString names[nParts]    = {"e", "#mu", "#pi", "K", "p"};
+    const Double_t masses[nParts]  = {
+        0.51099895,   // e
+        105.6583755,  // μ
+        139.57039,    // π
+        493.677,      // K
+        938.27208816  // p
+    };
+    const Double_t charges[nParts] = {1, 1, 1, 1, 1};
+    const Int_t colors[nParts]     = {
+        kViolet,    // e
+        kOrange+7,  // μ
+        kBlue,      // π
+        kRed,       // K
+        kGreen+2    // p
+    };
 
     TCanvas *c = new TCanvas("c","dE/dx vs p (tracks)",800,600); 
     c->SetLogz(); 
@@ -112,7 +124,7 @@ void Bethe_Bloch() {
     hist->SetStats(false);
     hist->Draw("COLZ");
 
-    TLegend *leg = new TLegend(0.83, 0.10, 0.98, 0.30);
+    TLegend *leg = new TLegend(0, 0.10, 0.15, 0.30);
     leg->SetBorderSize(0); 
     leg->SetFillStyle(0);
 
