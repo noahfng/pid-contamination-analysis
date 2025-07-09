@@ -20,6 +20,7 @@
 #include <TIterator.h>
 #include <TString.h>
 #include <TMath.h>
+#include <TLorentzVector.h>
 #include <vector>
 #include <algorithm>
 #include <iostream>
@@ -68,12 +69,15 @@ void Calculate_Invariant_Mass() {
     gROOT->SetBatch(kTRUE); 
     gStyle->SetOptStat(1);
     gStyle->SetPalette(kRainBow);
+    const char* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
     const bool applyTPCnSigmaFilter = true;
-    const bool applyTOFEventfilter = false;
-    const bool applyTOFnSigmaFilter = false;
+    const Float_t nSigmaTPC = 3.0; 
+    const bool applyTOFEventfilter = false; 
+    const bool applyTOFnSigmaFilter = false; 
+    const Float_t nSigmaTOF = 3.0;
     const bool plotMvsPT = true;
-    const bool plotSysPt = false;
-    const bool plotTrackPt = true; // if both true, the 2D plot will show plotSysPt only
+    const bool plotSysPt = true;
+    const bool plotTrackPt = false; // if both true, the 2D plot will show plotSysPt only
     const bool do2D = plotMvsPT && (plotSysPt || plotTrackPt);
     const char* yTitle;
     if (plotSysPt) {
@@ -81,13 +85,6 @@ void Calculate_Invariant_Mass() {
     } else if (plotTrackPt) {
         yTitle = "p_{T,track} (GeV/#it{c})";
     }
-    
-
-    const Float_t nSigmaTPC = 3.0; 
-    const Float_t nSigmaTOF = 3.0; 
-
-    const char* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
-
     TChain chain("twotauchain");
     AddTrees(chain, baseDir);
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(1e6));
@@ -191,33 +188,48 @@ void Calculate_Invariant_Mass() {
                 piK &= (TMath::Abs(tofNS[2][0]) < nSigmaTOF && TMath::Abs(tofNS[3][1]) < nSigmaTOF);
                 Kpi &= (TMath::Abs(tofNS[3][0]) < nSigmaTOF && TMath::Abs(tofNS[2][1]) < nSigmaTOF);}
         
-        if (piK == Kpi) continue;  
+        if (piK == Kpi) continue;
+
+        int i1 = 2; // π
+        int i2 = 3; // K
+        if (Kpi) {
+            i1 = 3; 
+            i2 = 2;
+        }
         
-        Double_t m1 = masses[2];  // π
-        Double_t m2 = masses[3];  // K
-        Double_t p1 = std::sqrt(px[0]*px[0] + py[0]*py[0] + pz[0]*pz[0]);
-        Double_t p2 = std::sqrt(px[1]*px[1] + py[1]*py[1] + pz[1]*pz[1]);
-        Double_t e1 = std::sqrt(p1*p1 + m1*m1);        
-        Double_t e2 = std::sqrt(p2*p2 + m2*m2);
+        TLorentzVector tl1;
+        TLorentzVector tl2;
 
-        Double_t Esum  = e1 + e2;
-        Double_t pxsum = px[0] + px[1];
-        Double_t pysum = py[0] + py[1];
-        Double_t pzsum = pz[0] + pz[1];
-        Double_t M2 = Esum*Esum - (pxsum*pxsum + pysum*pysum + pzsum*pzsum);
+        double p1 = std::sqrt(px[0]*px[0] + py[0]*py[0] + pz[0]*pz[0]);
+        double p2 = std::sqrt(px[1]*px[1] + py[1]*py[1] + pz[1]*pz[1]);
 
-        if (do2D && M2>0) {
-            Double_t mass = std::sqrt(M2);
+        double m1 = masses[i1];
+        double m2 = masses[i2];
+
+        double e1 = std::sqrt(p1*p1 + m1*m1);
+        double e2 = std::sqrt(p2*p2 + m2*m2);
+
+        tl1.SetPxPyPzE(px[0], py[0], pz[0], e1);
+        tl2.SetPxPyPzE(px[1], py[1], pz[1], e2);
+
+        TLorentzVector tlSum = tl1 + tl2;
+        double ivm = tlSum.M();
+
+        if(ivm <= 0) continue;
+        hM[5]->Fill(ivm);
+
+
+        if (do2D) {
             if (plotSysPt) {
                 Double_t pxsum = px[0] + px[1];
                 Double_t pysum = py[0] + py[1];
                 Double_t pTsys = std::hypot(pxsum, pysum);
-                h2Mpt[5]->Fill(mass, pTsys);
+                h2Mpt[5]->Fill(ivm, pTsys);
             }
             else if (plotTrackPt) {
                 for (int it = 0; it < 2; ++it) {
                 Double_t pT_i = std::hypot(px[it], py[it]);
-                h2Mpt[5]->Fill(mass, pT_i);
+                h2Mpt[5]->Fill(ivm, pT_i);
                 }
             }
         }
@@ -241,23 +253,31 @@ void Calculate_Invariant_Mass() {
         const Double_t mKstar = 0.890;  
         const Double_t mJpsi  = 3.0969; 
       
-        TLine l1(mRho, y1, mRho, y2);
-        l1.SetLineColor(kBlue);
-        l1.SetLineStyle(2);
-        l1.SetLineWidth(2);
-        l1.Draw("SAME");
+        TLine* l1= new TLine(mRho, y1, mRho, y2);
+        l1->SetLineColor(kBlue);
+        l1->SetLineStyle(2);
+        l1->SetLineWidth(2);
+        l1->Draw("SAME");
       
-        TLine l2(mKstar, y1, mKstar, y2);
-        l2.SetLineColor(kGreen+2);
-        l2.SetLineStyle(2);
-        l2.SetLineWidth(2);
-        l2.Draw("SAME");
+        TLine* l2= new TLine(mKstar, y1, mKstar, y2);
+        l2->SetLineColor(kGreen+2);
+        l2->SetLineStyle(2);
+        l2->SetLineWidth(2);
+        l2->Draw("SAME");
       
-        TLine l3(mJpsi, y1, mJpsi, y2);
-        l3.SetLineColor(kRed);
-        l3.SetLineStyle(2);
-        l3.SetLineWidth(2);
-        l3.Draw("SAME");
+        TLine* l3 = new TLine(mJpsi, y1, mJpsi, y2);
+        l3->SetLineColor(kRed);
+        l3->SetLineStyle(2);
+        l3->SetLineWidth(2);
+        l3->Draw("SAME");
+
+        TLegend* leg = new TLegend(0.8, 0.65, 0.88, 0.75);
+        leg->AddEntry(l1, "#rho(770)",  "l");   
+        leg->AddEntry(l2, "K*(892)", "l");
+        leg->AddEntry(l3, "J/#psi",     "l");
+        leg->SetBorderSize(0);
+        leg->SetTextSize(0.03);
+        leg->Draw("SAME");
         c.Print("InvariantMass.pdf");
     }
 
