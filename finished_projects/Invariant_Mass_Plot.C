@@ -50,14 +50,20 @@ void Invariant_Mass_Plot() {
         0.493677,        // K
         0.93827208816    // p
     };
-    const char* names[6] = { "e+e-", "#mu+#mu-", "#pi+#pi-", "K+K-", "p+p-", "#piK" };
+    const char* names[6] = {
+    "e^{+}e^{-}",
+    "#mu^{+}#mu^{-}",
+    "#pi^{+}#pi^{-}",
+    "K^{+}K^{-}",
+    "p^{+}p^{-}",
+    "K#pi"};
     Int_t colors[6] = {kBlue, kBlue, kBlue, kBlue, kBlue, kBlue};
 
     const Int_t   nPtBins = 100;
     const Float_t ptMax   = 5.0;
     TH1D* hM[6];
     for (int i = 0; i < 6; ++i) {
-        hM[i] = new TH1D(Form("hM_%s", names[i]),
+        hM[i] = new TH1D(Form("Invariant mass %s", names[i]),
                          Form("Invariant mass %s;M (GeV/#it{c}^{2});Entries", names[i]),
                          nPtBins, 0.0, ptMax);
         hM[i]->SetLineColor(colors[i]);
