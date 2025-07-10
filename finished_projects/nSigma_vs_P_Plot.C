@@ -6,7 +6,6 @@
 #include <TMath.h>
 #include <TStyle.h>
 #include <TString.h>
-#include <TStopwatch.h>
 #include <vector>
 #include <algorithm>
 #include "AddTrees.h"
@@ -34,7 +33,6 @@ Double_t get_expected_signal(Double_t p, Double_t mass, Double_t charge) {
 }
 
 void nSigma_vs_P_Plot() {
-    TStopwatch watch;
     gROOT->SetBatch(kTRUE);
     gStyle->SetOptStat(0);
     gStyle->SetPalette(kRainBow);
@@ -125,13 +123,11 @@ void nSigma_vs_P_Plot() {
             double pg = pgrid[ip];
             if (pg < 0.1) continue;
 
-            //  dE/dx (TPC) curve
             double dRef = get_expected_signal(pg*1000, mRef*1000, 1.0);
             double dHyp = get_expected_signal(pg*1000, mHyp*1000, 1.0);
             xv_tpc.push_back(pg);
             yv_tpc.push_back((dHyp/dRef - 1.0) / resoTPC[hyp]);
 
-            //  TOF curve
             double bRef = pg / TMath::Sqrt(mRef*mRef + pg*pg);
             double bHyp = pg / TMath::Sqrt(mHyp*mHyp + pg*pg);
             xv_tof.push_back(pg);
@@ -183,7 +179,5 @@ void nSigma_vs_P_Plot() {
         c->Print(pdf);
     }
     c->Print(Form("%s]", pdf));
-    watch.Stop();
-    watch.Print();
 }
 
