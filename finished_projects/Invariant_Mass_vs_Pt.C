@@ -1,11 +1,15 @@
+#include <TROOT.h>       
+#include <TStyle.h>     
 #include <TChain.h>
 #include <TCanvas.h>
-#include <TH2.h>
-#include <TStyle.h>
-#include <TMath.h>
-#include <AddTrees.h>
+#include <TH2.h>          
+#include <TMath.h>       
+#include <TString.h>     
+#include <TLorentzVector.h> 
 
-void Inariant_Mass_vs_Pt() {
+#include "AddTrees.h"
+
+void Invariant_Mass_vs_Pt() {
     gROOT->SetBatch(kTRUE);
     gStyle->SetPalette(kRainBow);
     const char* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
@@ -27,7 +31,7 @@ void Inariant_Mass_vs_Pt() {
 
     TChain chain("twotauchain");
     AddTrees(chain, baseDir);
-    Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(1e6));
+    Long64_t nEntries = TMath::Min(chain.GetEntries(), static_cast<Long64_t>(1e6));
     
     chain.SetBranchStatus("*",0);
     chain.SetBranchStatus("fTrkPx",1);
@@ -106,13 +110,13 @@ void Inariant_Mass_vs_Pt() {
             Float_t M2 = Esum*Esum - (pxsum*pxsum + pysum*pysum + pzsum*pzsum);
             if (M2 <= 0) continue;
 
-            Double_t mass = std::sqrt(M2);
+            Double_t mass = TMath::Sqrt(M2);
             if (plotSysPt) {
-                Double_t ptSys = std::hypot(pxsum, pysum);
+                Double_t ptSys = TMath::Hypot(pxsum, pysum);
                 h2Mpt[j]->Fill(mass, ptSys);
             } else {
                 for (int t = 0; t < 2; ++t) {
-                    Double_t ptTrk = std::hypot(px[t], py[t]);
+                    Double_t ptTrk = TMath::Hypot(px[t], py[t]);
                     h2Mpt[j]->Fill(mass, ptTrk);
                 }
             }
@@ -148,11 +152,11 @@ void Inariant_Mass_vs_Pt() {
         if (ivm <= 0) continue;
 
         if (plotSysPt) {
-            Double_t ptSys = std::hypot(px[0]+px[1], py[0]+py[1]);
+            Double_t ptSys = TMath::Hypot(px[0]+px[1], py[0]+py[1]);
             h2Mpt[5]->Fill(ivm, ptSys);
         } else {
             for (int t = 0; t < 2; ++t) {
-                Double_t ptTrk = std::hypot(px[t], py[t]);
+                Double_t ptTrk = TMath::Hypot(px[t], py[t]);
                 h2Mpt[5]->Fill(ivm, ptTrk);
             }
         }

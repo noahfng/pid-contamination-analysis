@@ -1,13 +1,16 @@
-#include <TROOT.h>
-#include <TChain.h>
-#include <TCanvas.h>
-#include <TH2F.h>
-#include <TLegend.h>
-#include <TMath.h>
-#include <TStyle.h>
-#include <TString.h>
-#include <vector>
 #include <algorithm>
+#include <vector>
+
+#include "TROOT.h"       
+#include "TStyle.h"       
+#include "TMath.h"        
+#include "TChain.h"      
+#include "TCanvas.h"     
+#include "TH2F.h"         
+#include "TLegend.h"      
+#include "TGraph.h"       
+#include "TString.h"     
+
 #include <AddTrees.h>
 
 Double_t bethe_bloch_aleph(Double_t bg, Double_t p1, Double_t p2, Double_t p3, Double_t p4, Double_t p5) {
@@ -42,7 +45,7 @@ void nSigma_vs_P_Plot() {
     TChain chain("twotauchain");
     AddTrees(chain, baseDir);
     Long64_t nTotal = chain.GetEntries();
-    nTotal = std::min(nTotal, static_cast<Long64_t>(1e9));
+    nTotal = TMath::Min(nTotal, static_cast<Long64_t>(1e9));
 
     chain.SetBranchStatus("*", 0);
     chain.SetBranchStatus("fTrkTPCinnerParam", 1);
