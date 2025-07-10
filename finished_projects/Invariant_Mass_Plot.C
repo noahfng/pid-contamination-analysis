@@ -8,7 +8,7 @@
 #include <TString.h>           
 #include <TLorentzVector.h>    
 #include <algorithm>        
-#include "finished_projects/AddTrees.h"
+#include "AddTrees.h"
 
 void Invariant_Mass_Plot() {
     gROOT->SetBatch(kTRUE); 
@@ -136,12 +136,12 @@ void Invariant_Mass_Plot() {
         if (integ > 0) hM[ih]->Scale(1.0/integ);
     }
 
-    TCanvas c("c","Invariant Mass Pages", 800, 600);
-    c.Print("InvariantMass.pdf[");      
+    TCanvas* c = new TCanvas("c","Invariant Mass Pages", 800, 600);
+    c->Print("InvariantMass.pdf[");      
 
     for (int i = 0; i < 6; ++i) {
-        c.Clear();
-        c.SetLogy();
+        c->Clear();
+        c->SetLogy();
         hM[i]->Draw("HIST");
         
         Double_t y1 = 0, y2 = hM[i]->GetMaximum()* 1.65;
@@ -174,10 +174,10 @@ void Invariant_Mass_Plot() {
         leg->SetBorderSize(0);
         leg->SetTextSize(0.03);
         leg->Draw("SAME");
-        c.Print("InvariantMass.pdf");
+        c->Print("InvariantMass.pdf");
     }
 
-    c.Print("InvariantMass.pdf]");    
+    c->Print("InvariantMass.pdf]");    
  
 }
 
