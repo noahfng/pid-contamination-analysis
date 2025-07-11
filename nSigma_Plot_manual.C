@@ -14,7 +14,7 @@
 
 #include <AddTrees.h>
 
-void nSigma_Plot(){
+void nSigma_Plot_manual(){
     gROOT->SetBatch(kFALSE);
     gStyle->SetOptStat(1);
     const char* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
