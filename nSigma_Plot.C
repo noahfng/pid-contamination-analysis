@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <vector>
+#include <limits>
+#include <cmath>
 
 #include "TROOT.h"
 #include "TStyle.h"
@@ -14,8 +16,26 @@
 
 #include <AddTrees.h>
 
+
+std::vector<double> topBinCenters(TH1 *h, int nWanted)
+{
+   std::vector<std::pair<double,int>> bins;        
+   for (int b = 1; b <= h->GetNbinsX(); ++b)
+       bins.emplace_back(h->GetBinContent(b), b);
+
+   std::partial_sort(bins.begin(), bins.begin()+nWanted, bins.end(),
+                     std::greater<>());              
+
+   std::vector<double> xc;
+   for (int i = 0; i < nWanted; ++i)
+       xc.push_back(h->GetXaxis()->GetBinCenter(bins[i].second));
+
+   std::sort(xc.begin(), xc.end());                 
+   return xc;
+}
+
 void nSigma_Plot(){
-    gROOT->SetBatch(kFALSE);
+    gROOT->SetBatch(kTRUE);
     gStyle->SetOptStat(1);
     const char* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
     TChain chain("twotauchain");
@@ -73,69 +93,70 @@ void nSigma_Plot(){
         hRes[h]->SetLineColor(kRed);
         hRes[h]->SetMarkerSize(0.75); 
         hRes[h]->Draw("E1");
-        c->Update();
-        gSystem->ProcessEvents();
 
-        int N = 0;
-        std::cout << "\nHistogram "     << h
-                << " (" << names[h]   << "): how many Gaussians? ";
-        std::cin  >> N;
-        if (N <= 0) {                   
-            c->Print("nSigmaTPC_plot.pdf");
-            continue;
+        const int nTryMax = 5;                         
+        TF1  *bestFit = nullptr;
+        double bestBIC = std::numeric_limits<double>::infinity();
+        int    bestN   = 0;
+
+        for (int nG = 1; nG <= nTryMax; ++nG) {
+
+            std::ostringstream form;
+            for (int i = 0; i < nG; ++i) {
+                if (i) form << "+";
+                form << "gaus(" << 3*i << ")";
+            }
+            TF1* fTmp = new TF1("fTmp", form.str().c_str(), xMin, xMax);
+
+            auto mu = topBinCenters(hRes[h], nG);
+            for (int i = 0; i < nG; ++i) {
+                int    bin = hRes[h]->FindBin(mu[i]);
+                double amp = hRes[h]->GetBinContent(bin);
+
+                fTmp->SetParameter(3*i+0, amp);          // amplitude  (p = 3i)
+                fTmp->SetParameter(3*i+1, mu[i]);        // mean       (p = 3i+1)
+                fTmp->SetParameter(3*i+2, 0.30);         // sigma      (p = 3i+2)
+
+                fTmp->SetParLimits(3*i+2, 0.05, 5.0);    
+            }
+
+            hRes[h]->Fit(fTmp, "QR0");                         
+            double chi2 = fTmp->GetChisquare();
+            int    k    = 3*nG;                                 
+            double nObs = hRes[h]->GetEntries();
+            double bic = chi2 +k * TMath::Log(nObs);
+            const double deltaBICmin = 2;
+
+            if (bestBIC - bic > deltaBICmin) {
+                bestBIC = bic;
+                bestN   = nG;
+                delete bestFit;
+                bestFit = (TF1*)fTmp->Clone(Form("best_%d",h));
+            }
+            else break;
         }
 
-        std::vector<double> means;
-        means.reserve(N);
-        std::cout << "  Enter " << N << " mean positions (space-separated): ";
-        for (int i = 0; i < N; ++i) {
-            double m;  std::cin >> m;
-            means.push_back(m);
-        }
-        
-            
-        std::ostringstream form;
-        for (int i = 0; i < N; ++i) {
-            if (i) form << "+";
-            form << "gaus(" << 3*i << ")";
-        }
-        TF1* fSum = new TF1(Form("sum_%d",h), form.str().c_str(), xMin, xMax);
-        fSum->SetNpx(500);
+        bestFit->SetLineColor(kRed);
+        bestFit->SetNpx(500);
+        bestFit->SetLineWidth(2);
+        bestFit->Draw("same");
 
-        for (int i = 0; i < N; ++i) {
-            double mu  = means[i];
-            int    bin = hRes[h]->FindBin(mu);
-            double amp = hRes[h]->GetBinContent(bin);
-
-            fSum->SetParameter(3*i+0, amp);   // amplitude
-            fSum->SetParameter(3*i+1, mu);    // mean (user value)
-            fSum->SetParameter(3*i+2, 0.3);   // sigma (generic guess)
-        }
-        hRes[h]->Fit(fSum,"RQ0");
-
-        hRes[h]->Fit(fSum,"RQ");
-        double chi2 = fSum->GetChisquare();
-        int NDF = fSum->GetNDF();
-
-        hRes[h]->Draw("E1");
-        
-        TPaveText *pt = new TPaveText(0.0,0.9,0.2,1,"NDC");
-        pt->AddText(Form("#chi^{2}/NDF = %.3f",chi2/NDF));
-        pt->SetFillColorAlpha(0,0);       // transparent box
-        pt->Draw("same");
-
-        fSum->SetLineColor(kRed);
-        fSum->SetLineWidth(2);
-        fSum->Draw("same");                  
-
-        for (int i = 0; i < N; ++i) {
+        for (int i = 0; i < bestN; ++i) {
             TF1* g = new TF1(Form("g_%d_%d",h,i),"gaus",xMin,xMax);
             for (int p = 0; p < 3; ++p)
-                g->SetParameter(p, fSum->GetParameter(3*i+p));
-            g->SetLineStyle(2);              
+                g->SetParameter(p, bestFit->GetParameter(3*i+p));
+            g->SetLineStyle(2);
             g->SetLineColor(colors[i % nParts]);
             g->Draw("same");
         }
+
+        double chi2 = bestFit->GetChisquare();
+        int    ndf  = bestFit->GetNDF();
+        TPaveText* pt = new TPaveText(0.0,0.9,0.20,1.0,"NDC");
+        pt->AddText(Form("N_{Gauss} = %d, #chi^{2}/NDF = %.2f, BIC = %.1f", bestN, chi2/ndf, bestBIC));
+        pt->SetFillColorAlpha(0,0);
+        pt->Draw("same");
+        
 
         c->Print("nSigmaTPC_plot.pdf");} 
     
