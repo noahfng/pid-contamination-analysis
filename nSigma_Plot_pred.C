@@ -77,7 +77,7 @@ void nSigma_Plot_pred(){
         chain.SetBranchAddress(Form("fTrkTPCnSigma%s", subs[i]), tpcNS[i]);}
 
     const Int_t nBins = 200;
-    const Double_t pMin = 0.4, pMax = 0.5; 
+    const Double_t pMin = 0.2, pMax = 0.3; 
     const Double_t xMin = -15.0, xMax = 15.0;
     const Int_t nParts = 5;
     const TString names[nParts] = {"e","#mu","#pi","K","p"};
@@ -111,7 +111,6 @@ void nSigma_Plot_pred(){
     TCanvas *c = new TCanvas("c", "Residuals", 800, 600);
     c->SetLeftMargin(0.15);
     c->SetGrid();
-    c->SetLogy();
     c->Print("nSigmaTPC_plot.pdf[");
     for (int h = 0; h < nParts; ++h) {
         c->Clear();
@@ -122,27 +121,25 @@ void nSigma_Plot_pred(){
         hRes[h]->Draw("E1");
 
         const double pMid = 0.5*(pMin + pMax);            
-        double dRef = get_expected_signal(pMid*1000, masses[h]*1000, 1.0);
-        if (dRef > 0) {
-            for (int hyp = 0; hyp < 5; ++hyp) {
+        double mRef = masses[h]; 
+        for (int hyp = 0; hyp < 5; ++hyp) {
+            double mHyp = masses[hyp];
+            double dRef = get_expected_signal(pMid*1000, mRef*1000, 1.0);
+            double dHyp = get_expected_signal(pMid*1000, mHyp*1000, 1.0);                 
 
-                double dHyp = get_expected_signal(pMid*1000, masses[hyp]*1000, 1.0);
-                if (dHyp < 0) continue;                  
+            double nSigmaPeak = (dHyp/dRef - 1.0)/ (resoTPC[hyp]);
+            std::cout << "nSigmaPeak for " << subs[hyp] << " = " << nSigmaPeak << std::endl;
+            double yMax = 1.05 * hRes[h]->GetMaximum();
+            TLine *l = new TLine(nSigmaPeak, 0.0, nSigmaPeak, yMax);
+            l->SetLineColor(colors[hyp]);
+            l->SetLineStyle(1);
+            l->Draw("same");
 
-                double nSigmaPeak = (dHyp/dRef - 1.0)/ (resoTPC[h]);
-                std::cout << "nSigmaPeak for " << subs[hyp] << " = " << nSigmaPeak << std::endl;
-                double yMax = 1.05 * hRes[h]->GetMaximum();
-                TLine *l = new TLine(nSigmaPeak, 0.0, nSigmaPeak, yMax);
-                l->SetLineColor(colors[hyp]);
-                l->SetLineStyle(1);
-                l->Draw("same");
-
-                TLatex txt;
-                txt.SetTextSize(0.035);
-                txt.SetTextAlign(22);                          
-                txt.SetTextColor(colors[hyp]);
-                txt.DrawLatex(nSigmaPeak, 0.9*yMax, subs[hyp]); 
-            }
+            TLatex txt;
+            txt.SetTextSize(0.035);
+            txt.SetTextAlign(22);                          
+            txt.SetTextColor(colors[hyp]);
+            txt.DrawLatex(nSigmaPeak, 0.9*yMax, subs[hyp]); 
         }
 
         const int nTryMax = 5;                         
