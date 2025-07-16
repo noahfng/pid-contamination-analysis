@@ -70,13 +70,7 @@ void dEdx_vs_p() {
         938.27208816  // p
     };
     const Double_t charges[nParts] = {1, 1, 1, 1, 1};
-    const Int_t colors[nParts]     = {
-        kViolet,    // e
-        kOrange+7,  // μ
-        kBlue,      // π
-        kRed,       // K
-        kGreen+2    // p
-    };
+    const Int_t colors[nParts] = {kBlue, kGreen+2, kOrange+7, kMagenta+2, kCyan+1}
 
     TCanvas *c = new TCanvas("c","dE/dx vs p (tracks)",800,600); 
     c->SetLogz(); 

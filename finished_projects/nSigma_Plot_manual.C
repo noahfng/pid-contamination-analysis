@@ -37,7 +37,7 @@ void nSigma_Plot_manual(){
     const Double_t xMin = -15.0, xMax = 15.0;
     const Int_t nParts = 5;
     const TString names[nParts] = {"e","#mu","#pi","K","p"};
-    const Int_t colors[nParts] = {kBlue, kBlueYellow, kGreen+2, kOrange+7, kViolet};
+    const Int_t colors[nParts] = {kBlue, kGreen+2, kOrange+7, kMagenta+2, kCyan+1};
 
     TH1F *hRes[nParts];
     for (int h = 0; h < nParts; ++h) {

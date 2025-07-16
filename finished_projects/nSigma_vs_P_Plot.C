@@ -73,7 +73,7 @@ void nSigma_vs_P_Plot() {
     Double_t masses[5] = {0.00051099895, 0.1056583755,  0.13957039, 0.493677, 0.93827208816};
     Double_t resoTOF[5]   = {0.013, 0.013, 0.013, 0.019, 0.020};
     Double_t resoTPC[5]   = {0.085, 0.072, 0.074, 0.09, 0.08}; 
-    Int_t   colors[5]  = {kRed, kBlue, kMagenta, kOrange+1, kGreen+2};
+    Int_t   colors[5]  = {kBlue, kGreen+2, kOrange+7, kMagenta+2, kCyan+1};
     const int npoints = 200;
     const Double_t pMin = 0.01, pMax = 5.0;
     Double_t pgrid[npoints];
