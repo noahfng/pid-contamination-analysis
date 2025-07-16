@@ -2,7 +2,6 @@
 #include <vector>
 #include <limits>
 #include <cmath>
-#include <sstream>
 
 #include "TROOT.h"
 #include "TStyle.h"
@@ -10,12 +9,16 @@
 #include "TChain.h"
 #include "TCanvas.h"
 #include "TH1F.h"
+#include "TLegend.h"
+#include "TF1.h"  
+#include "TSpectrum.h"
+#include "TSystem.h"
+#include "RooFit.h"
 #include "TLine.h"
 #include "TLatex.h"
 #include "TPaveText.h"
-#include "TF1.h"
 
-#include "AddTrees.h"
+#include <AddTrees.h>
 
 Double_t bethe_bloch_aleph(Double_t bg, Double_t p1, Double_t p2, Double_t p3, Double_t p4, Double_t p5) {
     Double_t beta = bg / TMath::Sqrt(1.0 + bg*bg);
@@ -56,9 +59,11 @@ std::vector<double> topBinCenters(TH1 *h, int nWanted)
    return xc;
 }
 
-void nSigma_Plot(){
+void nSigma_Plot(double pStart = 0.1, double pEnd = 2.0, double step = 0.1, double muWindow = 1.0)   
+{
     gROOT->SetBatch(kTRUE);
     gStyle->SetOptStat(1);
+
     const char *baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
     TChain chain("twotauchain");
     AddTrees(chain, baseDir);
@@ -77,128 +82,181 @@ void nSigma_Plot(){
         chain.SetBranchAddress(Form("fTrkTPCnSigma%s", subs[i]), tpcNS[i]);
 
     const Int_t   nBins   = 200;
-    const Double_t xMin   = -15.0, xMax = 15.0;
-    const Double_t pMin   = 0.5, pMax = 0.6; 
+    const Double_t xMin   = -25.0, xMax = 150.0;
     const Int_t   nParts  = 5;
     const TString names[nParts]   = {"e", "#mu", "#pi", "K", "p"};
-    const Int_t   colors[nParts] = {kBlue, kBlueYellow, kGreen + 2,
-                                    kOrange + 7, kViolet};
-    const Double_t resoTPC[nParts] = {0.085, 0.072, 0.074, 0.090, 0.080};
-    const Double_t masses[nParts]  = {0.00051099895, 0.1056583755,
-                                      0.13957039,    0.493677,
-                                      0.93827208816};
+    const Int_t   colors[nParts] = {kBlue, kGreen+2, kOrange+7, kMagenta+2, kCyan+1};
+    const Double_t resoTPC[nParts] = {0.085, 0.072, 0.074, 0.09, 0.08}; 
+    const Double_t masses[nParts]  = {0.00051099895, 0.1056583755, 0.13957039, 0.493677, 0.93827208816};
 
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(1e6));
 
-    TCanvas *c = new TCanvas("c", "n#sigma histograms", 950, 700);
-    c->SetLeftMargin(0.15);
-    c->SetGrid();
-    c->Print("nSigmaTPC_theorySeed.pdf[");
-
-
     for (int ref = 0; ref < nParts; ++ref) {
-        TH1F *hist = new TH1F(Form("h_%s", names[ref].Data()),
-                Form("n#sigma_{%s}, %.2f < p < %.2f GeV/c; n#sigma_{%s}; Counts",
-                     names[ref].Data(), pMin, pMax, names[ref].Data()),
-                nBins, xMin, xMax);
-        hist->SetMarkerStyle(kFullCircle);
-        hist->SetMarkerSize(0.75);
-        hist->SetMarkerColor(kBlack);
-        hist->SetLineColor(kBlack);
 
-        for (Long64_t i = 0; i < nEntries; ++i) {
-            chain.GetEntry(i);
-            for (int t = 0; t < 2; ++t) {
-                Float_t pG = inner[t];
-                if (pG < pMin || pG > pMax) continue;
-                if (!TMath::IsNaN(tpcNS[ref][t])) hist->Fill(tpcNS[ref][t]);
+        TString pdfName = Form("nSigmaTPC_%s.pdf", names[ref].Data());
+        TCanvas *c = new TCanvas("c","n#sigma("+names[ref]+")",950,700);
+        c->SetLeftMargin(0.15); 
+        c->SetGrid(); 
+        c->SetLogy();
+        c->Print(pdfName+"[");
+
+        for (double pMin = pStart; pMin < pEnd; pMin += step) {
+            double pMax = pMin + step;
+            TH1F *h = new TH1F(Form("h_%s_%g",names[ref].Data(),pMin),
+                Form("n#sigma_{%s}, %.1f < p < %.1f GeV/c; n#sigma; Counts",
+                     names[ref].Data(), pMin, pMax),
+                nBins,xMin,xMax);
+            h->SetMarkerStyle(kFullCircle); 
+            h->SetMarkerSize(0.75);
+            h->SetMarkerColor(kBlack); 
+            h->SetLineColor(kBlack);
+            TLegend* leg = new TLegend(0, 0.10, 0.15, 0.30);
+            leg->SetBorderSize(0);
+            leg->SetFillStyle(0);
+
+            for(Long64_t ev=0; ev<nEntries; ++ev){
+                chain.GetEntry(ev);
+                for(int t=0;t<2;++t){
+                    float pG=inner[t];
+                    if(pG<pMin||pG>=pMax) continue;
+                    if(!TMath::IsNaN(tpcNS[ref][t])) h->Fill(tpcNS[ref][t]);
+                }
             }
+
+            double pMid = 0.5*(pMin+pMax);
+            double dRef = get_expected_signal(pMid*1000, masses[ref]*1000, 1.0);
+            struct Peak {
+                double A, mu, sigma; 
+                int id; 
+                std::vector<int> merged_ids;
+            };
+            std::vector<Peak> seeds;
+            double yMax = 1.05*h->GetMaximum();
+
+            for(int hyp=0; hyp<nParts; ++hyp){
+                double dHyp = get_expected_signal(pMid*1000, masses[hyp]*1000, 1.0);
+                double sigma0 = (resoTPC[hyp]/resoTPC[ref]) * (dHyp/dRef);
+                double mu = (dHyp/dRef -1.0)/resoTPC[hyp];
+                int    bin = h->FindBin(mu);        
+                double amp = h->GetBinContent(bin);
+                sigma0 = std::clamp(sigma0, 0.5, 15.0); 
+                if(dRef<0||dHyp<0) continue;
+                if(mu<xMin||mu>xMax) continue;
+
+                seeds.push_back({amp, mu, sigma0, hyp, {hyp}});
+            }
+            std::vector<Peak> merged;
+            std::sort(seeds.begin(), seeds.end(),
+                    [](auto &a, auto &b){return a.mu<b.mu;});
+
+            for (size_t i=0; i<seeds.size(); ++i) {
+                if (!merged.empty() &&
+                    std::abs(seeds[i].mu - merged.back().mu) <
+                    1.0*std::max(seeds[i].sigma, merged.back().sigma))          
+                {
+                    auto &p = merged.back();
+                    double I1 = p.A * p.sigma * sqrt(2*M_PI);
+                    double I2 = seeds[i].A * seeds[i].sigma * sqrt(2*M_PI);
+                    double It = I1 + I2;
+
+                    double mu_eff = (I1*p.mu + I2*seeds[i].mu) / It;
+                    double var_eff = (I1*(p.sigma*p.sigma + (p.mu-mu_eff)*(p.mu-mu_eff)) +
+                                    I2*(seeds[i].sigma*seeds[i].sigma +
+                                        (seeds[i].mu-mu_eff)*(seeds[i].mu-mu_eff))) / It;
+                    double sig_eff = std::sqrt(var_eff);
+                    double A_eff   = It / (std::sqrt(2*M_PI)*sig_eff);
+
+                    std::vector<int> ids = p.merged_ids;
+                    ids.insert(ids.end(), seeds[i].merged_ids.begin(), seeds[i].merged_ids.end());
+                    p = {A_eff, mu_eff, sig_eff, -1, ids}; 
+                } else {
+                    merged.push_back(seeds[i]);
+                }
+            }
+            size_t nG = merged.size();
+            if (nG == 0) { c->Print(pdfName); delete h; continue; }
+
+            std::ostringstream form;
+            for (size_t i = 0; i < nG; ++i) {
+                if (i) form << "+";
+                form << "gaus(" << 3*i << ")";
+            }
+            TF1 *sum=new TF1("sum",form.str().c_str(),xMin,xMax);
+            for (size_t i = 0; i < nG; ++i) {
+                const auto &p = merged[i];
+
+                sum->SetParLimits(3*i, 0.0, std::max(h->GetMaximum()*1.2, p.A*1.05));
+                sum->SetParameter (3*i, p.A);
+
+                double dMu = std::max(muWindow, 0.10*std::abs(p.mu));
+                sum->SetParLimits(3*i+1, p.mu - dMu, p.mu + dMu);
+                sum->SetParameter (3*i+1, p.mu);
+
+                sum->SetParLimits(3*i+2, 0.5*p.sigma, 3.0*p.sigma);
+                sum->SetParameter (3*i+2, p.sigma);
+            }
+            h->Fit(sum,"QR0");
+            c->Clear(); 
+            h->Draw("E1");
+            sum->SetLineColor(kRed); 
+            sum->SetLineWidth(2); 
+            sum->SetNpx(500); 
+            sum->Draw("same");
+
+            for (const auto &pk : merged) {
+                double mu = pk.mu;
+                TLine *l = new TLine(mu, 0, mu, yMax);
+                int col  = (pk.id >= 0) ? colors[pk.id] : kGray+2;
+                l->SetLineColor(col);
+                l->Draw();
+
+                
+                TString label;
+                if (pk.merged_ids.size()==1)
+                    label = names[pk.merged_ids[0]];
+                else {
+                    for (size_t j=0;j<pk.merged_ids.size();++j){
+                        if (j) label += " + ";
+                        label += names[pk.merged_ids[j]];
+                    }
+                }
+            }
+
+            for (size_t i = 0; i < nG; ++i) {
+                if (sum->GetParameter(3*i) <= 0) continue;
+
+                TF1 *g = new TF1(Form("g_%d_%zu", ref, i), "gaus", xMin, xMax);
+                g->SetParameters(&sum->GetParameters()[3*i]);
+
+                int col = (merged[i].id >= 0) ? colors[merged[i].id] : kGray+2;
+                g->SetLineColor(col);
+                g->SetLineStyle(2);
+                g->Draw("same");
+
+                TString label;
+                if (merged[i].merged_ids.size() == 1) {
+                    label = names[merged[i].merged_ids[0]];
+                } else {
+                    for (size_t j = 0; j < merged[i].merged_ids.size(); ++j) {
+                        if (j > 0) label += " + ";
+                        label += names[merged[i].merged_ids[j]];
+                    }
+                }
+                leg->AddEntry(g, label, "l");
+            }
+
+            TPaveText *pt=new TPaveText(0.02,0.90,0.25,0.99,"NDC");
+            pt->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
+            pt->AddText(Form("N_{Gauss} = %zu", nG)); 
+            pt->SetFillColorAlpha(0,0); pt->Draw("same");
+            leg->Draw();
+            c->Print(pdfName);
+            delete sum; 
+            delete h;
+            delete leg;
         }
-        const double pMid = 0.5 * (pMin + pMax);
-        const double dRef = get_expected_signal(pMid * 1000., masses[ref] * 1000, 1.0);
-
-        std::vector<double> muSeed;
-        std::vector<int>    hypId;
-
-        double yMax = 1.05 * hist->GetMaximum();
-        for (int hyp = 0; hyp < nParts; ++hyp) {
-            double dHyp = get_expected_signal(pMid * 1000., masses[hyp] * 1000, 1.0);
-            if (dRef < 0 || dHyp < 0) continue;
-
-            double mu = (dHyp / dRef - 1.0) / resoTPC[hyp];
-            if (mu < xMin || mu > xMax) continue;
-
-            TLine *tl = new TLine(mu, 0., mu, yMax);
-            tl->SetLineColor(colors[hyp]);
-            tl->Draw();
-            TLatex lab;
-            lab.SetTextColor(colors[hyp]);
-            lab.SetTextSize(0.03);
-            lab.SetTextAlign(22);
-            lab.DrawLatex(mu, 0.92 * yMax, names[hyp]);
-
-            muSeed.push_back(mu);
-            hypId.push_back(hyp);
-        }
-
-        const int nG = muSeed.size();
-        if (nG == 0) { c->Print("nSigmaTPC_theorySeed.pdf"); delete hist; continue; }
-
-        std::ostringstream form;
-        for (int i = 0; i < nG; ++i) {
-            if (i) form << "+";
-            form << "gaus(" << 3 * i << ")";
-        }
-        TF1 *sum = new TF1("sum", form.str().c_str(), xMin, xMax);
-
-        for (int i = 0; i < nG; ++i) {
-            int    bin = hist->FindBin(muSeed[i]);
-            double amp = hist->GetBinContent(bin);
-            sum->SetParameters(3 * i, amp, muSeed[i], 0.30);
-
-            sum->SetParLimits(3 * i + 0, 0.0, hist->GetMaximum() * 1.2);        // amp ≥ 0
-            sum->SetParLimits(3 * i + 1, muSeed[i] - 1.0, muSeed[i] + 1.0);      // |Δμ| ≤ 1σ
-            sum->SetParLimits(3 * i + 2, 0, 100.0);                             // reasonable σ
-        }
-
-        hist->Fit(sum, "QR0");
-        c->Clear();
-        hist->Draw("E1");
-
-        sum->SetLineColor(kRed);
-        sum->SetLineWidth(2);
-        sum->SetNpx(500);
-        sum->Draw("same");
-
-        for (int i = 0; i < nG; ++i) {
-            double amp = sum->GetParameter(3 * i);
-            if (amp <= 0) continue;                  
-
-            TF1 *g = new TF1(Form("g_%d_%d", ref, i), "gaus", xMin, xMax);
-            g->SetParameters(&sum->GetParameters()[3 * i]);
-            g->SetLineColor(colors[hypId[i]]);
-            g->SetLineStyle(2);
-            g->Draw("same");
-        }
-
-        for (size_t i = 0; i < muSeed.size(); ++i) {
-            TLine *tl = new TLine(muSeed[i], 0., muSeed[i], yMax);
-            tl->SetLineColor(colors[hypId[i]]);
-            tl->Draw();
-        }
-
-        TPaveText *pt = new TPaveText(0.02, 0.90, 0.25, 0.99, "NDC");
-        pt->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare() / sum->GetNDF()));
-        pt->AddText(Form("N_{Gauss} = %d", nG));
-        pt->SetFillColorAlpha(0, 0);
-        pt->Draw("same");
-
-        c->Print("nSigmaTPC_theorySeed.pdf");
-
-        delete sum;
-        delete hist;
+        c->Print(pdfName+"]"); 
+        delete c;
     }
-
-    c->Print("nSigmaTPC_theorySeed.pdf]");
-    delete c;
 }
+
