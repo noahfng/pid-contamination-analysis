@@ -17,6 +17,9 @@
 #include "TLine.h"
 #include "TLatex.h"
 #include "TPaveText.h"
+#include "TFitResultPtr.h"
+#include "TFitResult.h"
+
 
 #include <AddTrees.h>
 
@@ -59,7 +62,7 @@ std::vector<double> topBinCenters(TH1 *h, int nWanted)
    return xc;
 }
 
-void nSigma_Plot(double pStart = 0.1, double pEnd = 2.0, double step = 0.1, double muWindow = 1.0)   
+void nSigma_Plot()   
 {
     gROOT->SetBatch(kTRUE);
     gStyle->SetOptStat(1);
@@ -70,33 +73,40 @@ void nSigma_Plot(double pStart = 0.1, double pEnd = 2.0, double step = 0.1, doub
 
     chain.SetBranchStatus("*", 0);
     chain.SetBranchStatus("fTrkTPCinnerParam", 1);
+    chain.SetBranchStatus("fTrkTOFexpMom", 1);
 
     const char *subs[5] = {"El", "Mu", "Pi", "Ka", "Pr"};
     for (int i = 0; i < 5; ++i)
         chain.SetBranchStatus(Form("fTrkTPCnSigma%s", subs[i]), 1);
 
-    Float_t inner[2];
+    Float_t inner[2], tofExpMom[2];
     Float_t tpcNS[5][2];
     chain.SetBranchAddress("fTrkTPCinnerParam", inner);
+    chain.SetBranchAddress("fTrkTOFexpMom", tofExpMom);
     for (int i = 0; i < 5; ++i)
         chain.SetBranchAddress(Form("fTrkTPCnSigma%s", subs[i]), tpcNS[i]);
 
-    const Int_t   nBins   = 200;
-    const Double_t xMin   = -25.0, xMax = 150.0;
+    const Int_t   nBins   = 500;
+    const Double_t xMin   = -25.0, xMax = 50.0;
+    const Int_t countThreshold = 0;
+    const Double_t pStart = 0.2, pEnd = 2.0, step = 0.1;
+    const Double_t muWindow = 1.0;
+    const Double_t mergeDistanceFactor = 1.0;
+    const bool useTOF = true;
     const Int_t   nParts  = 5;
     const TString names[nParts]   = {"e", "#mu", "#pi", "K", "p"};
     const Int_t   colors[nParts] = {kBlue, kGreen+2, kOrange+7, kMagenta+2, kCyan+1};
     const Double_t resoTPC[nParts] = {0.085, 0.072, 0.074, 0.09, 0.08}; 
     const Double_t masses[nParts]  = {0.00051099895, 0.1056583755, 0.13957039, 0.493677, 0.93827208816};
 
-    Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(1e6));
+    Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(1e7));
 
     for (int ref = 0; ref < nParts; ++ref) {
 
         TString pdfName = Form("nSigmaTPC_%s.pdf", names[ref].Data());
         TCanvas *c = new TCanvas("c","n#sigma("+names[ref]+")",950,700);
         c->SetLeftMargin(0.15); 
-        c->SetGrid(); 
+        //c->SetGrid(); 
         c->SetLogy();
         c->Print(pdfName+"[");
 
@@ -106,6 +116,7 @@ void nSigma_Plot(double pStart = 0.1, double pEnd = 2.0, double step = 0.1, doub
                 Form("n#sigma_{%s}, %.1f < p < %.1f GeV/c; n#sigma; Counts",
                      names[ref].Data(), pMin, pMax),
                 nBins,xMin,xMax);
+            h->Sumw2(true);
             h->SetMarkerStyle(kFullCircle); 
             h->SetMarkerSize(0.75);
             h->SetMarkerColor(kBlack); 
@@ -114,12 +125,18 @@ void nSigma_Plot(double pStart = 0.1, double pEnd = 2.0, double step = 0.1, doub
             leg->SetBorderSize(0);
             leg->SetFillStyle(0);
 
-            for(Long64_t ev=0; ev<nEntries; ++ev){
+            for(Long64_t ev = 0; ev < nEntries; ++ev){
                 chain.GetEntry(ev);
-                for(int t=0;t<2;++t){
+                for(int t = 0; t < 2; ++t){
+                    if (useTOF && tofExpMom[t] < 0) continue;
                     float pG=inner[t];
                     if(pG<pMin||pG>=pMax) continue;
                     if(!TMath::IsNaN(tpcNS[ref][t])) h->Fill(tpcNS[ref][t]);
+                }
+            }
+            for (int b = 1; b <= h->GetNbinsX(); ++b) {
+                if (h->GetBinContent(b) < countThreshold){
+                    h->SetBinContent(b, 0);
                 }
             }
 
@@ -129,6 +146,7 @@ void nSigma_Plot(double pStart = 0.1, double pEnd = 2.0, double step = 0.1, doub
                 double A, mu, sigma; 
                 int id; 
                 std::vector<int> merged_ids;
+                bool alwaysSeparate = false;
             };
             std::vector<Peak> seeds;
             double yMax = 1.05*h->GetMaximum();
@@ -143,34 +161,80 @@ void nSigma_Plot(double pStart = 0.1, double pEnd = 2.0, double step = 0.1, doub
                 if(dRef<0||dHyp<0) continue;
                 if(mu<xMin||mu>xMax) continue;
 
-                seeds.push_back({amp, mu, sigma0, hyp, {hyp}});
+                seeds.push_back({ amp, mu, sigma0, hyp, {hyp}, false });
             }
-            std::vector<Peak> merged;
+
+            Peak muPiCombined{0,0,0,-1,{},false};
+            bool sawMu = false, sawPi = false;
+            for (auto it = seeds.begin(); it != seeds.end(); ) {
+                if (it->id == 1 || it->id == 2) {
+                    if (!sawMu && it->id == 1) {
+                        muPiCombined = *it;
+                        sawMu = true;
+                    }
+                    else {
+                        double I_old = muPiCombined.A * muPiCombined.sigma * sqrt(2*M_PI);
+                        double I_new = it->A * it->sigma * sqrt(2*M_PI);
+                        double I_tot = I_old + I_new;
+                        double mu_eff = (I_old*muPiCombined.mu + I_new*it->mu) / I_tot;
+                        double var_eff = (
+                            I_old*(muPiCombined.sigma*muPiCombined.sigma 
+                                + (muPiCombined.mu-mu_eff)*(muPiCombined.mu-mu_eff))
+                        + I_new*(it->sigma*it->sigma 
+                                + (it->mu-mu_eff)*(it->mu-mu_eff))
+                        ) / I_tot;
+                        muPiCombined.A     = I_tot / (muPiCombined.sigma * sqrt(2*M_PI));
+                        muPiCombined.mu    = mu_eff;
+                        muPiCombined.sigma = sqrt(var_eff);
+                    }
+                    muPiCombined.merged_ids.push_back(it->id);
+                    sawPi = sawPi || (it->id == 2);
+                    it = seeds.erase(it);
+                }
+                else {
+                    ++it;
+                }
+            }
+            if (sawMu || sawPi) {
+                muPiCombined.id = 1;
+                muPiCombined.alwaysSeparate = std::find(muPiCombined.merged_ids.begin(), muPiCombined.merged_ids.end(), ref) != muPiCombined.merged_ids.end();
+                seeds.push_back(muPiCombined);
+            }
+
+            for (auto &s : seeds) {
+                if (std::find(s.merged_ids.begin(), s.merged_ids.end(), ref) != s.merged_ids.end()) {
+                    s.alwaysSeparate = true;
+                }
+            }
+
             std::sort(seeds.begin(), seeds.end(),
-                    [](auto &a, auto &b){return a.mu<b.mu;});
+                    [](auto &a, auto &b){ return a.mu < b.mu; });
 
-            for (size_t i=0; i<seeds.size(); ++i) {
-                if (!merged.empty() &&
-                    std::abs(seeds[i].mu - merged.back().mu) <
-                    1.0*std::max(seeds[i].sigma, merged.back().sigma))          
+            std::vector<Peak> merged;
+            for (auto &s : seeds) {
+                if (!merged.empty()
+                    && !s.alwaysSeparate
+                    && !merged.back().alwaysSeparate
+                    && std::abs(s.mu - merged.back().mu)
+                        < mergeDistanceFactor * std::max(s.sigma, merged.back().sigma))
                 {
-                    auto &p = merged.back();
+                    Peak &p = merged.back();
                     double I1 = p.A * p.sigma * sqrt(2*M_PI);
-                    double I2 = seeds[i].A * seeds[i].sigma * sqrt(2*M_PI);
+                    double I2 = s.A * s.sigma * sqrt(2*M_PI);
                     double It = I1 + I2;
-
-                    double mu_eff = (I1*p.mu + I2*seeds[i].mu) / It;
-                    double var_eff = (I1*(p.sigma*p.sigma + (p.mu-mu_eff)*(p.mu-mu_eff)) +
-                                    I2*(seeds[i].sigma*seeds[i].sigma +
-                                        (seeds[i].mu-mu_eff)*(seeds[i].mu-mu_eff))) / It;
-                    double sig_eff = std::sqrt(var_eff);
-                    double A_eff   = It / (std::sqrt(2*M_PI)*sig_eff);
-
-                    std::vector<int> ids = p.merged_ids;
-                    ids.insert(ids.end(), seeds[i].merged_ids.begin(), seeds[i].merged_ids.end());
-                    p = {A_eff, mu_eff, sig_eff, -1, ids}; 
-                } else {
-                    merged.push_back(seeds[i]);
+                    double mu_eff = (I1*p.mu + I2*s.mu) / It;
+                    double var_eff = (I1*(p.sigma*p.sigma + (p.mu-mu_eff)*(p.mu-mu_eff))
+                                    + I2*(s.sigma*s.sigma + (s.mu-mu_eff)*(s.mu-mu_eff)))
+                                    / It;
+                    p.sigma = sqrt(var_eff);
+                    p.mu    = mu_eff;
+                    p.A     = It / (sqrt(2*M_PI) * p.sigma);
+                    p.merged_ids.insert(p.merged_ids.end(),
+                                        s.merged_ids.begin(),
+                                        s.merged_ids.end());
+                }
+                else {
+                    merged.push_back(s);
                 }
             }
             size_t nG = merged.size();
@@ -179,23 +243,29 @@ void nSigma_Plot(double pStart = 0.1, double pEnd = 2.0, double step = 0.1, doub
             std::ostringstream form;
             for (size_t i = 0; i < nG; ++i) {
                 if (i) form << "+";
-                form << "gaus(" << 3*i << ")";
+                form << "gaus(" << 3 * i << ")";
             }
+            size_t idxLine = 3 * nG;
+            form << "+pol0(" << idxLine << ")";
             TF1 *sum=new TF1("sum",form.str().c_str(),xMin,xMax);
             for (size_t i = 0; i < nG; ++i) {
                 const auto &p = merged[i];
+                
+                sum->SetParLimits(idxLine, 0, 10.0);
+                sum->SetParameter(idxLine, 1.0);
 
-                sum->SetParLimits(3*i, 0.0, std::max(h->GetMaximum()*1.2, p.A*1.05));
-                sum->SetParameter (3*i, p.A);
+                sum->SetParLimits(3 * i, 0.0, std::max(h->GetMaximum() * 1.2, p.A * 1.05));
+                sum->SetParameter (3 * i, p.A);
 
-                double dMu = std::max(muWindow, 0.10*std::abs(p.mu));
-                sum->SetParLimits(3*i+1, p.mu - dMu, p.mu + dMu);
-                sum->SetParameter (3*i+1, p.mu);
+                double dMu = std::max(muWindow, 0.10 * std::abs(p.mu));
+                sum->SetParLimits(3 * i + 1, p.mu - dMu, p.mu + dMu);
+                sum->SetParameter (3 * i + 1, p.mu);
 
-                sum->SetParLimits(3*i+2, 0.5*p.sigma, 3.0*p.sigma);
-                sum->SetParameter (3*i+2, p.sigma);
+                sum->SetParLimits(3 * i + 2, 0.5 * p.sigma, 3.0 * p.sigma);
+                sum->SetParameter (3 * i + 2, p.sigma);
+
             }
-            h->Fit(sum,"QR0");
+            TFitResultPtr fitRes = h->Fit(sum, "RLQ0S");
             c->Clear(); 
             h->Draw("E1");
             sum->SetLineColor(kRed); 
@@ -232,6 +302,10 @@ void nSigma_Plot(double pStart = 0.1, double pEnd = 2.0, double step = 0.1, doub
                 g->SetLineColor(col);
                 g->SetLineStyle(2);
                 g->Draw("same");
+                
+                auto &ids = merged[i].merged_ids;
+                std::sort(ids.begin(), ids.end());
+                ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
 
                 TString label;
                 if (merged[i].merged_ids.size() == 1) {
@@ -247,6 +321,7 @@ void nSigma_Plot(double pStart = 0.1, double pEnd = 2.0, double step = 0.1, doub
 
             TPaveText *pt=new TPaveText(0.02,0.90,0.25,0.99,"NDC");
             pt->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
+            //pt->AddText(Form("Likelihood = %.2f", fitRes->MinFcnValue()));
             pt->AddText(Form("N_{Gauss} = %zu", nG)); 
             pt->SetFillColorAlpha(0,0); pt->Draw("same");
             leg->Draw();
@@ -259,4 +334,3 @@ void nSigma_Plot(double pStart = 0.1, double pEnd = 2.0, double step = 0.1, doub
         delete c;
     }
 }
-
