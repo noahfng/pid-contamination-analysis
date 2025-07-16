@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <vector>
-#include <limits>
 #include <cmath>
 
 #include "TROOT.h"
@@ -11,14 +10,8 @@
 #include "TH1F.h"
 #include "TLegend.h"
 #include "TF1.h"  
-#include "TSpectrum.h"
-#include "TSystem.h"
-#include "RooFit.h"
 #include "TLine.h"
-#include "TLatex.h"
 #include "TPaveText.h"
-#include "TFitResultPtr.h"
-#include "TFitResult.h"
 
 
 #include <AddTrees.h>
@@ -62,8 +55,7 @@ std::vector<double> topBinCenters(TH1 *h, int nWanted)
    return xc;
 }
 
-void nSigma_Plot()   
-{
+void nSigma_Plot(){
     gROOT->SetBatch(kTRUE);
     gStyle->SetOptStat(1);
 
@@ -76,16 +68,18 @@ void nSigma_Plot()
     chain.SetBranchStatus("fTrkTOFexpMom", 1);
 
     const char *subs[5] = {"El", "Mu", "Pi", "Ka", "Pr"};
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < 5; ++i){
         chain.SetBranchStatus(Form("fTrkTPCnSigma%s", subs[i]), 1);
-
+        chain.SetBranchStatus(Form("fTrkTOFnSigma%s", subs[i]), 1);
+    }
     Float_t inner[2], tofExpMom[2];
-    Float_t tpcNS[5][2];
+    Float_t tpcNS[5][2], tofNS[5][2];
     chain.SetBranchAddress("fTrkTPCinnerParam", inner);
     chain.SetBranchAddress("fTrkTOFexpMom", tofExpMom);
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < 5; ++i){
         chain.SetBranchAddress(Form("fTrkTPCnSigma%s", subs[i]), tpcNS[i]);
-
+        chain.SetBranchAddress(Form("fTrkTOFnSigma%s", subs[i]), tofNS[i]);
+    }
     const Int_t   nBins   = 500;
     const Double_t xMin   = -25.0, xMax = 50.0;
     const Int_t countThreshold = 0;
@@ -99,7 +93,7 @@ void nSigma_Plot()
     const Double_t resoTPC[nParts] = {0.085, 0.072, 0.074, 0.09, 0.08}; 
     const Double_t masses[nParts]  = {0.00051099895, 0.1056583755, 0.13957039, 0.493677, 0.93827208816};
 
-    Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(1e7));
+    Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(1e6));
 
     for (int ref = 0; ref < nParts; ++ref) {
 
@@ -265,7 +259,7 @@ void nSigma_Plot()
                 sum->SetParameter (3 * i + 2, p.sigma);
 
             }
-            TFitResultPtr fitRes = h->Fit(sum, "RLQ0S");
+            h->Fit(sum, "RLQ0S");
             c->Clear(); 
             h->Draw("E1");
             sum->SetLineColor(kRed); 
@@ -321,7 +315,6 @@ void nSigma_Plot()
 
             TPaveText *pt=new TPaveText(0.02,0.90,0.25,0.99,"NDC");
             pt->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
-            //pt->AddText(Form("Likelihood = %.2f", fitRes->MinFcnValue()));
             pt->AddText(Form("N_{Gauss} = %zu", nG)); 
             pt->SetFillColorAlpha(0,0); pt->Draw("same");
             leg->Draw();
