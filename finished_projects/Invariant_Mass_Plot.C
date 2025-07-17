@@ -16,12 +16,12 @@
 void Invariant_Mass_Plot() {
     gROOT->SetBatch(kTRUE); 
     gStyle->SetOptStat(1);
-    const char* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
-    const bool applyTPCnSigmaFilter = true;
+    const Char_t* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
+    const Bool_t applyTPCnSigmaFilter = true;
     const Float_t nSigmaTPC = 3.0; 
-    const bool applyTOFEventfilter = false; 
-    const bool applyTOFnSigmaFilter = false; 
-    const bool applyNorm = true;
+    const Bool_t applyTOFEventfilter = false; 
+    const Bool_t applyTOFnSigmaFilter = false; 
+    const Bool_t applyNorm = true;
     const Float_t nSigmaTOF = 3.0;
   
     TChain chain("twotauchain");
@@ -32,8 +32,8 @@ void Invariant_Mass_Plot() {
     chain.SetBranchStatus("fTrkPy", 1);
     chain.SetBranchStatus("fTrkPz", 1);
     chain.SetBranchStatus("fTrkTOFexpMom", 1);
-    const char* subs[5] = {"El","Mu","Pi","Ka","Pr"};
-    for (int i = 0; i < 5; ++i) {
+    const Char_t* subs[5] = {"El","Mu","Pi","Ka","Pr"};
+    for (Int_t i = 0; i < 5; ++i) {
         chain.SetBranchStatus(Form("fTrkTPCnSigma%s", subs[i]), 1);
         chain.SetBranchStatus(Form("fTrkTOFnSigma%s", subs[i]), 1);}
     Float_t tpcNS[5][2], tofNS[5][2];
@@ -43,7 +43,7 @@ void Invariant_Mass_Plot() {
     chain.SetBranchAddress("fTrkPx",px);
     chain.SetBranchAddress("fTrkPy",py);
     chain.SetBranchAddress("fTrkPz",pz);
-    for (int i = 0; i < 5; ++i) {
+    for (Int_t i = 0; i < 5; ++i) {
         chain.SetBranchAddress(Form("fTrkTPCnSigma%s", subs[i]), tpcNS[i]);
         chain.SetBranchAddress(Form("fTrkTOFnSigma%s", subs[i]), tofNS[i]);}
 
@@ -54,7 +54,7 @@ void Invariant_Mass_Plot() {
         0.493677,        // K
         0.93827208816    // p
     };
-    const char* names[6] = {
+    const Char_t* names[6] = {
     "e^{+}e^{-}",
     "#mu^{+}#mu^{-}",
     "#pi^{+}#pi^{-}",
@@ -66,7 +66,7 @@ void Invariant_Mass_Plot() {
     const Int_t   nPtBins = 100;
     const Float_t ptMax   = 5.0;
     TH1D* hM[6];
-    for (int i = 0; i < 6; ++i) {
+    for (Int_t i = 0; i < 6; ++i) {
         hM[i] = new TH1D(Form("Invariant mass %s", names[i]),
                          Form("Invariant mass %s;M (GeV/#it{c}^{2});Entries", names[i]),
                          nPtBins, 0.0, ptMax);
@@ -78,7 +78,7 @@ void Invariant_Mass_Plot() {
         chain.GetEntry(i);
         if(applyTOFEventfilter && (tofExpMom[0] < 0.0 || tofExpMom[1] < 0.0)) continue; 
 
-        for (int j = 0; j < 5; ++j) {
+        for (Int_t j = 0; j < 5; ++j) {
             if (applyTPCnSigmaFilter && (TMath::Abs(tpcNS[j][0]) > nSigmaTPC || TMath::Abs(tpcNS[j][1]) > nSigmaTPC))  continue;
             if (applyTOFnSigmaFilter && (TMath::Abs(tofNS[j][0]) > nSigmaTOF || TMath::Abs(tofNS[j][1]) > nSigmaTOF)) continue;
 
@@ -96,7 +96,7 @@ void Invariant_Mass_Plot() {
             if (M2 > 0) {
                 hM[j]->Fill(std::sqrt(M2));}
         }
-        bool piK = true, Kpi = true;
+        Bool_t piK = true, Kpi = true;
         if (applyTPCnSigmaFilter) {
             piK &= (TMath::Abs(tpcNS[2][0]) < nSigmaTPC && TMath::Abs(tpcNS[3][1]) < nSigmaTPC);
             Kpi &= (TMath::Abs(tpcNS[3][0]) < nSigmaTPC && TMath::Abs(tpcNS[2][1]) < nSigmaTPC);}
@@ -107,8 +107,8 @@ void Invariant_Mass_Plot() {
         
         if ((applyTPCnSigmaFilter || applyTOFnSigmaFilter) && (piK == Kpi)) continue;
 
-        int i1 = 2; // π
-        int i2 = 3; // K
+        Int_t i1 = 2; // π
+        Int_t i2 = 3; // K
         if (Kpi) {
             i1 = 3; 
             i2 = 2;
@@ -117,26 +117,26 @@ void Invariant_Mass_Plot() {
         TLorentzVector tl1;
         TLorentzVector tl2;
 
-        double p1 = std::sqrt(px[0]*px[0] + py[0]*py[0] + pz[0]*pz[0]);
-        double p2 = std::sqrt(px[1]*px[1] + py[1]*py[1] + pz[1]*pz[1]);
+        Double_t p1 = std::sqrt(px[0]*px[0] + py[0]*py[0] + pz[0]*pz[0]);
+        Double_t p2 = std::sqrt(px[1]*px[1] + py[1]*py[1] + pz[1]*pz[1]);
 
-        double m1 = masses[i1];
-        double m2 = masses[i2];
+        Double_t m1 = masses[i1];
+        Double_t m2 = masses[i2];
 
-        double e1 = std::sqrt(p1*p1 + m1*m1);
-        double e2 = std::sqrt(p2*p2 + m2*m2);
+        Double_t e1 = std::sqrt(p1*p1 + m1*m1);
+        Double_t e2 = std::sqrt(p2*p2 + m2*m2);
 
         tl1.SetPxPyPzE(px[0], py[0], pz[0], e1);
         tl2.SetPxPyPzE(px[1], py[1], pz[1], e2);
 
         TLorentzVector tlSum = tl1 + tl2;
-        double ivm = tlSum.M();
+        Double_t ivm = tlSum.M();
 
         if(ivm <= 0) continue;
         hM[5]->Fill(ivm);
     }
     if (applyNorm){
-        for (int ih = 0; ih < 6; ++ih) {
+        for (Int_t ih = 0; ih < 6; ++ih) {
             Double_t integ = hM[ih]->GetEntries();
             if (integ > 0) hM[ih]->Scale(1.0/integ);
         }
@@ -171,10 +171,10 @@ void Invariant_Mass_Plot() {
     leg->SetBorderSize(0);
     leg->SetTextSize(0.03);
 
-    for (int i = 0; i < 6; ++i) {
+    for (Int_t i = 0; i < 6; ++i) {
         c->Clear();
         c->SetLogy();
-        double y2 = hM[i]->GetMaximum()*1.65;
+        Double_t y2 = hM[i]->GetMaximum()*1.65;
         l1->SetY2(y2);
         l2->SetY2(y2);
         l3->SetY2(y2);

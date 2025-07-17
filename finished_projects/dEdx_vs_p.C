@@ -33,7 +33,7 @@ Double_t get_expected_signal(Double_t p, Double_t mass, Double_t charge) {
 
 void dEdx_vs_p() {
     gStyle->SetPalette(kRainBow);
-    const char* base_dir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
+    const Char_t* base_dir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
     TChain chain("twotauchain");
     AddTrees(chain, base_dir);
 
@@ -70,9 +70,9 @@ void dEdx_vs_p() {
         938.27208816  // p
     };
     const Double_t charges[nParts] = {1, 1, 1, 1, 1};
-    const Int_t colors[nParts] = {kBlue, kGreen+2, kOrange+7, kMagenta+2, kCyan+1}
+    const Int_t colors[nParts] = {kBlue, kGreen+2, kOrange+7, kMagenta+2, kCyan+1};
 
-    TCanvas *c = new TCanvas("c","dE/dx vs p (tracks)",800,600); 
+    TCanvas* c = new TCanvas("c","dE/dx vs p (tracks)",800,600); 
     c->SetLogz(); 
     c->SetLogx();
     c->SetGrid();

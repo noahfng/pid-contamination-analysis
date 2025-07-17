@@ -12,15 +12,15 @@
 void Invariant_Mass_vs_Pt() {
     gROOT->SetBatch(kTRUE);
     gStyle->SetPalette(kRainBow);
-    const char* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
+    const Char_t* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
 
-    const bool    applyTPCnSigmaFilter = true;
+    const Bool_t    applyTPCnSigmaFilter = true;
     const Float_t nSigmaTPC            = 3.0;
-    const bool    applyTOFEventfilter  = false;
-    const bool    applyTOFnSigmaFilter = false;
+    const Bool_t    applyTOFEventfilter  = false;
+    const Bool_t    applyTOFnSigmaFilter = false;
     const Float_t nSigmaTOF            = 3.0;
-    const bool    plotSysPt            = true;
-    const bool    plotTrackPt          = false; // if both true, the 2D plot will show plotSysPt 
+    const Bool_t    plotSysPt            = true;
+    const Bool_t    plotTrackPt          = false; // if both true, the 2D plot will show plotSysPt 
 
     TString yTitle = plotSysPt
                      ? "p_{T,sys}"
@@ -38,8 +38,8 @@ void Invariant_Mass_vs_Pt() {
     chain.SetBranchStatus("fTrkPy",1);
     chain.SetBranchStatus("fTrkPz",1);
     chain.SetBranchStatus("fTrkTOFexpMom",1);
-    const char* subs[5]={"El","Mu","Pi","Ka","Pr"};
-    for(int i=0;i<5;++i){
+    const Char_t* subs[5]={"El","Mu","Pi","Ka","Pr"};
+    for(Int_t i=0;i<5;++i){
         chain.SetBranchStatus(Form("fTrkTPCnSigma%s",subs[i]),1);
         chain.SetBranchStatus(Form("fTrkTOFnSigma%s",subs[i]),1);
     }
@@ -50,7 +50,7 @@ void Invariant_Mass_vs_Pt() {
     chain.SetBranchAddress("fTrkPy",py);
     chain.SetBranchAddress("fTrkPz",pz);
     chain.SetBranchAddress("fTrkTOFexpMom",tofExp);
-    for(int i=0;i<5;++i){
+    for(Int_t i=0;i<5;++i){
         chain.SetBranchAddress(Form("fTrkTPCnSigma%s",subs[i]),tpcNS[i]);
         chain.SetBranchAddress(Form("fTrkTOFnSigma%s",subs[i]),tofNS[i]);
     }
@@ -62,7 +62,7 @@ void Invariant_Mass_vs_Pt() {
         0.493677,        // K
         0.93827208816    // p
     };
-    const char* names[6] = {
+    const Char_t* names[6] = {
     "e^{+}e^{-}",
     "#mu^{+}#mu^{-}",
     "#pi^{+}#pi^{-}",
@@ -75,7 +75,7 @@ void Invariant_Mass_vs_Pt() {
     const Int_t   nPtBins   = 100;
     const Float_t ptMax     =   5.0;
     TH2D* h2Mpt[6];
-    for (int i = 0; i < 6; ++i) {
+    for (Int_t i = 0; i < 6; ++i) {
         h2Mpt[i] = new TH2D(
             Form("M vs p_{T}%s", names[i]),
             Form("Mass vs %s %s; M (GeV/#it{c}^{2}); %s (GeV/#it{c})", yTitle.Data(), names[i], yTitle.Data()),
@@ -90,7 +90,7 @@ void Invariant_Mass_vs_Pt() {
         if (applyTOFEventfilter && (tofExp[0] < 0 || tofExp[1] < 0))
             continue;
 
-        for (int j = 0; j < 5; ++j) {
+        for (Int_t j = 0; j < 5; ++j) {
             if (applyTPCnSigmaFilter &&
                (TMath::Abs(tpcNS[j][0]) > nSigmaTPC ||
                 TMath::Abs(tpcNS[j][1]) > nSigmaTPC)) continue;
@@ -115,14 +115,14 @@ void Invariant_Mass_vs_Pt() {
                 Double_t ptSys = TMath::Hypot(pxsum, pysum);
                 h2Mpt[j]->Fill(mass, ptSys);
             } else {
-                for (int t = 0; t < 2; ++t) {
+                for (Int_t t = 0; t < 2; ++t) {
                     Double_t ptTrk = TMath::Hypot(px[t], py[t]);
                     h2Mpt[j]->Fill(mass, ptTrk);
                 }
             }
         }
 
-        bool piK = true, Kpi = true;
+        Bool_t piK = true, Kpi = true;
         if (applyTPCnSigmaFilter) {
             piK &= (TMath::Abs(tpcNS[2][0]) < nSigmaTPC &&
                     TMath::Abs(tpcNS[3][1]) < nSigmaTPC);
@@ -138,8 +138,8 @@ void Invariant_Mass_vs_Pt() {
         if ((applyTPCnSigmaFilter || applyTOFnSigmaFilter) && (piK == Kpi))
             continue;
 
-        int i1 = piK ? 2 : 3;
-        int i2 = piK ? 3 : 2;
+        Int_t i1 = piK ? 2 : 3;
+        Int_t i2 = piK ? 3 : 2;
 
         TLorentzVector l1, l2;
         Double_t p1  = std::hypot(px[0], py[0], pz[0]);
@@ -155,7 +155,7 @@ void Invariant_Mass_vs_Pt() {
             Double_t ptSys = TMath::Hypot(px[0]+px[1], py[0]+py[1]);
             h2Mpt[5]->Fill(ivm, ptSys);
         } else {
-            for (int t = 0; t < 2; ++t) {
+            for (Int_t t = 0; t < 2; ++t) {
                 Double_t ptTrk = TMath::Hypot(px[t], py[t]);
                 h2Mpt[5]->Fill(ivm, ptTrk);
             }
@@ -164,7 +164,7 @@ void Invariant_Mass_vs_Pt() {
 
     TCanvas* c = new TCanvas("c", "");
     c->Print(outName + "["); 
-    for (int i = 0; i < 6; ++i) {
+    for (Int_t i = 0; i < 6; ++i) {
         c->Clear();
         c->SetLogz();
         h2Mpt[i]->Draw("COLZ");

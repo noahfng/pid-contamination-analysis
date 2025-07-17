@@ -16,7 +16,7 @@
 
 void countTOF() {
   TChain chain("twotauchain");
-  const char* base_dir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
+  const Char_t* base_dir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
   AddTrees(chain, base_dir);
 
   Long64_t total = chain.GetEntries();

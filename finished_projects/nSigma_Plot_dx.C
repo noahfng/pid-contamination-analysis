@@ -13,21 +13,21 @@
 void nSigma_Plot_dx() {
     gROOT->SetBatch(kTRUE);
     gStyle->SetOptStat(0);
-    const char* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
+    const Char_t* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
     TChain chain("twotauchain");
     AddTrees(chain, baseDir);
 
     chain.SetBranchStatus("*", 0);
     chain.SetBranchStatus("fTrkTPCinnerParam", 1);
-    const char* subs[5] = {"El","Mu","Pi","Ka","Pr"};
-    for (int i = 0; i < 5; ++i) {
+    const Char_t* subs[5] = {"El","Mu","Pi","Ka","Pr"};
+    for (Int_t i = 0; i < 5; ++i) {
         chain.SetBranchStatus(Form("fTrkTPCnSigma%s", subs[i]), 1);
     }
 
     Float_t inner[2];
     Float_t tpcNS[5][2];
     chain.SetBranchAddress("fTrkTPCinnerParam", inner);
-    for (int i = 0; i < 5; ++i) {
+    for (Int_t i = 0; i < 5; ++i) {
         chain.SetBranchAddress(Form("fTrkTPCnSigma%s", subs[i]), tpcNS[i]);
     }
 
@@ -41,7 +41,7 @@ void nSigma_Plot_dx() {
 
     TH1F* hRes[nParts];
     TH1F* hDeriv[nParts];
-    for (int h = 0; h < nParts; ++h) {
+    for (Int_t h = 0; h < nParts; ++h) {
 
         hRes[h] = new TH1F(
             Form("res_%s", names[h].Data()),
@@ -64,10 +64,10 @@ void nSigma_Plot_dx() {
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(1e6));
     for (Long64_t i = 0; i < nEntries; ++i) {
         chain.GetEntry(i);
-        for (int tr = 0; tr < 2; ++tr) {
+        for (Int_t tr = 0; tr < 2; ++tr) {
             Float_t pG = inner[tr];
             if (pG < pMin || pG > pMax) continue;
-            for (int h = 0; h < nParts; ++h) {
+            for (Int_t h = 0; h < nParts; ++h) {
                 Float_t val = tpcNS[h][tr];
                 if (!TMath::IsNaN(val)) {
                     hRes[h]->Fill(val);
@@ -76,16 +76,16 @@ void nSigma_Plot_dx() {
         }
     }
 
-    for (int h = 0; h < nParts; ++h) {
-        int nb = hRes[h]->GetNbinsX();
-        for (int ib = 1; ib <= nb; ++ib) {
+    for (Int_t h = 0; h < nParts; ++h) {
+        Int_t nb = hRes[h]->GetNbinsX();
+        for (Int_t ib = 1; ib <= nb; ++ib) {
             if (ib == 1 || ib == nb) {
                 hDeriv[h]->SetBinContent(ib, 0.);
             } else {
-                double xLo = hRes[h]->GetBinCenter(ib - 1);
-                double xHi = hRes[h]->GetBinCenter(ib + 1);
-                double yLo = hRes[h]->GetBinContent(ib - 1);
-                double yHi = hRes[h]->GetBinContent(ib + 1);
+                Double_t xLo = hRes[h]->GetBinCenter(ib - 1);
+                Double_t xHi = hRes[h]->GetBinCenter(ib + 1);
+                Double_t yLo = hRes[h]->GetBinContent(ib - 1);
+                Double_t yHi = hRes[h]->GetBinContent(ib + 1);
                 hDeriv[h]->SetBinContent(ib, (yHi - yLo)/(xHi - xLo));
             }
         }
@@ -95,7 +95,7 @@ void nSigma_Plot_dx() {
     c->SetLeftMargin(0.15);
     c->SetGrid();
     c->Print("nSigmaTPC_derivative.pdf[");
-    for (int h = 0; h < nParts; ++h) {
+    for (Int_t h = 0; h < nParts; ++h) {
         c->Clear();
         hDeriv[h]->Draw("E1"); 
         c->Print("nSigmaTPC_derivative.pdf");

@@ -1,4 +1,4 @@
-void AddTrees(TChain &chain, const char* baseDir) {
+void AddTrees(TChain &chain, const Char_t* baseDir) {
     TSystemDirectory dir("base", baseDir);
     TList *subdirs = dir.GetListOfFiles();
     TSystemFile *sysfile;
