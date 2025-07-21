@@ -41,8 +41,8 @@ void nSigma_vs_p_Plot() {
     Float_t tpcSignal[NtrkMax] = {0};
     Float_t tofExpMom[NtrkMax] = {0};
     Bool_t plotTPC = true;
-    Bool_t plotTOF = false;
-    const Double_t nEntriesLimit = 1e6;
+    Bool_t plotTOF = true;
+    const Double_t nEntriesLimit = 1e7;
     
     chain.SetBranchAddress("fTrkTPCsignal", tpcSignal);
     chain.SetBranchAddress("fTrkTPCinnerParam", inner);
@@ -79,7 +79,7 @@ void nSigma_vs_p_Plot() {
         );
     }
 
-    for (Long64_t ev = 0; ev < nTotal; ++ev) {
+    for (Long64_t ev = 0; ev < nEntries; ++ev) {
         chain.GetEntry(ev);
         for (Int_t tr = 0; tr < NtrkMax; ++tr) {
             Float_t p = inner[tr];
@@ -115,14 +115,15 @@ void nSigma_vs_p_Plot() {
                     Double_t fracRef = resoRefAbs / dRef;
 
                     xv_tpc.push_back(pg);
-                    yv_tpc.push_back((dHyp/dRef - 1.0) / resoTPC[ref]);
+                    yv_tpc.push_back((dHyp/dRef - 1.0) / fracRef);
                 }
                 if (plotTOF){
-                    Double_t bRef = pg / TMath::Sqrt(mRef*mRef + pg*pg);
-                    Double_t bHyp = pg / TMath::Sqrt(mHyp*mHyp + pg*pg);
-                    Double_t resoHyp = getReso(kTOF, (Char_t*)subs[hyp], pg);
+                    Double_t dRef = get_expected_signal(pg*1000, mRef*1000, 1.0);
+                    Double_t dHyp = get_expected_signal(pg*1000, mHyp*1000, 1.0);
+                    Double_t resoRefAbs = getReso(kTOF, (Char_t*)subs[ref], pg);
+                    Double_t fracRef = resoRefAbs / dRef;
                     xv_tof.push_back(pg);
-                    yv_tof.push_back((bRef - bHyp) / (bHyp*bHyp*resoHyp));
+                    yv_tof.push_back((dHyp/dRef - 1.0)/ fracRef);
                 }
             }
             

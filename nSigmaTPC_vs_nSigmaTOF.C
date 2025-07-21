@@ -7,12 +7,12 @@
 #include "AddTrees.h"
 
 void nSigmaTPC_vs_nSigmaTOF()
-{
+{   gStyle->SetPalette(kRainBow);
     const Char_t* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
     const Int_t    nBins = 200;
     const Double_t xMin  = -20, xMax = 20;
     const Double_t yMin  = -20, yMax = 20;
-    const Double_t nEntriesLimit = 1e6;
+    const Double_t nEntriesLimit = 1e7;
     TChain chain("twotauchain");
     AddTrees(chain, baseDir);
 
@@ -62,9 +62,9 @@ void nSigmaTPC_vs_nSigmaTOF()
     gStyle->SetOptStat(0);
     for (Int_t i = 0; i < 5; ++i) {
         c->Clear();
-        h2[i]->SetContour(50);
         h2[i]->Draw("COLZ");
         c->SetLogz();
+        c->SetRightMargin(0.15);
         c->SaveAs(Form("nSigma2D_%s.pdf", subs[i]));
     }
     delete c;

@@ -48,8 +48,8 @@ void nSigma_Plot(){
     const Double_t mergeDistanceFactor = 1.0;
     const Double_t nEntriesLimit = 1e6;
     const Bool_t TOFfilter = false;
-    const Bool_t plotTPC = false;
-    const Bool_t plotTOF = true;
+    const Bool_t plotTPC = true;
+    const Bool_t plotTOF = false;
     const Bool_t PeakZoom = true;
     const Bool_t manualPredictPeaks = false;
 
@@ -154,8 +154,10 @@ void nSigma_Plot(){
                     } else {
                         Double_t resoHypAbs = getReso(kTOF, (Char_t*)subs[hyp], pMid);
                         Double_t resoRefAbs = getReso(kTOF, (Char_t*)subs[ref], pMid);
-                        sigma0 = (resoHypAbs / resoRefAbs) * (1.0 / (bHyp * bHyp));
-                        mu     = (bRef - bHyp) / (bHyp * resoHypAbs);
+                        Double_t fracHyp = resoHypAbs / dHyp;
+                        Double_t fracRef = resoRefAbs / dRef;
+                        sigma0 = (fracHyp / fracRef) * (1.0 / (bHyp * bHyp));
+                        mu     = (dHyp/dRef - 1.0) / fracRef;
                     }
                     sigma0 = std::clamp(sigma0, 0.5, 15.0);
                     if (mu < xMin || mu > xMax) continue;
