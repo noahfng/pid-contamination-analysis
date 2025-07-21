@@ -21,6 +21,7 @@ void Invariant_Mass_vs_pt() {
     const Float_t nSigmaTOF            = 3.0;
     const Bool_t    plotSysPt            = true;
     const Bool_t    plotTrackPt          = false; // if both true, the 2D plot will show plotSysPt 
+    const Double_t nEntriesLimit = 1e6;
 
     TString yTitle = plotSysPt
                      ? "p_{T,sys}"
@@ -31,7 +32,7 @@ void Invariant_Mass_vs_pt() {
 
     TChain chain("twotauchain");
     AddTrees(chain, baseDir);
-    Long64_t nEntries = TMath::Min(chain.GetEntries(), static_cast<Long64_t>(1e6));
+    Long64_t nEntries = TMath::Min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
     
     chain.SetBranchStatus("*",0);
     chain.SetBranchStatus("fTrkPx",1);

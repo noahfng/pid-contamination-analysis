@@ -13,38 +13,8 @@
 #include "TFile.h"    
 
 #include <AddTrees.h>
-
-Double_t bethe_bloch_aleph(Double_t bg, Double_t p1, Double_t p2, Double_t p3, Double_t p4, Double_t p5) {
-    Double_t beta = bg / TMath::Sqrt(1.0 + bg*bg);
-    Double_t aa   = TMath::Power(beta, p4);
-    Double_t bb   = TMath::Log(p3 + TMath::Power(1.0/bg, p5));
-    return (p2 - aa - bb) * p1 / aa;
-}
-
-Double_t get_expected_signal(Double_t p, Double_t mass, Double_t charge) {
-    const Double_t mMIP = 50.0;
-    const Double_t params[5] = {0.19310481, 4.26696118, 0.00522579, 2.38124907, 0.98055396};
-    const Double_t chFact = 2.3;
-
-    Double_t bg = p / mass;
-    if (bg < 0.05) return -999.;
-    Double_t bethe = mMIP
-                   * bethe_bloch_aleph(bg,
-                                       params[0], params[1], params[2],
-                                       params[3], params[4])
-                   * TMath::Power(charge, chFact);
-    return bethe >= 0 ? bethe : -999.;
-}
-
-Float_t getReso(Char_t* hypo, Float_t mom)
-{
-  TFile *file = TFile::Open("UD_LHC23_pass4_SingleGap/nSigmaTPCResolution.root", "READ");
-  auto gname = Form("nSigmaTPCres%s", hypo);
-  TGraph *gr = (TGraph*)file->Get(gname);
-  file->Close();
-  auto reso = gr->Eval(mom);
-  return reso;
-}
+#include <get_expected_signal.h>
+#include <getReso.h>
 
 void nSigma_vs_p_Plot() {
     gROOT->SetBatch(kTRUE);
@@ -55,9 +25,6 @@ void nSigma_vs_p_Plot() {
 
     TChain chain("twotauchain");
     AddTrees(chain, baseDir);
-    Long64_t nTotal = chain.GetEntries();
-    nTotal = TMath::Min(nTotal, static_cast<Long64_t>(1e9));
-
     chain.SetBranchStatus("*", 0);
     chain.SetBranchStatus("fTrkTPCinnerParam", 1);
     chain.SetBranchStatus("fTrkTOFexpMom", 1);
@@ -75,6 +42,8 @@ void nSigma_vs_p_Plot() {
     Float_t tofExpMom[NtrkMax] = {0};
     Bool_t plotTPC = true;
     Bool_t plotTOF = false;
+    const Double_t nEntriesLimit = 1e6;
+    
     chain.SetBranchAddress("fTrkTPCsignal", tpcSignal);
     chain.SetBranchAddress("fTrkTPCinnerParam", inner);
     chain.SetBranchAddress("fTrkTOFexpMom", tofExpMom);
@@ -94,6 +63,7 @@ void nSigma_vs_p_Plot() {
         pgrid[i] = pMin + i*(pMax - pMin)/(npoints - 1);
     }
 
+    Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
     TH2F* histTPC[5];
     TH2F* histTOF[5];
     for (Int_t i = 0; i < 5; ++i) {
@@ -141,17 +111,18 @@ void nSigma_vs_p_Plot() {
                 if (plotTPC){
                     Double_t dRef = get_expected_signal(pg*1000, mRef*1000, 1.0);
                     Double_t dHyp = get_expected_signal(pg*1000, mHyp*1000, 1.0);
-                    Double_t resoRefAbs = getReso((Char_t*)subs[ref], pg);
+                    Double_t resoRefAbs = getReso(kTPC, (Char_t*)subs[ref], pg);
                     Double_t fracRef = resoRefAbs / dRef;
 
                     xv_tpc.push_back(pg);
-                    yv_tpc.push_back((dHyp/dRef - 1.0) / fracRef);
+                    yv_tpc.push_back((dHyp/dRef - 1.0) / resoTPC[ref]);
                 }
                 if (plotTOF){
                     Double_t bRef = pg / TMath::Sqrt(mRef*mRef + pg*pg);
                     Double_t bHyp = pg / TMath::Sqrt(mHyp*mHyp + pg*pg);
+                    Double_t resoHyp = getReso(kTOF, (Char_t*)subs[hyp], pg);
                     xv_tof.push_back(pg);
-                    yv_tof.push_back((bRef - bHyp) / (bHyp*bHyp * resoTOF[hyp]));
+                    yv_tof.push_back((bRef - bHyp) / (bHyp*bHyp*resoHyp));
                 }
             }
             

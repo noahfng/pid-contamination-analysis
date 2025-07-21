@@ -19,38 +19,8 @@
 
 
 #include <AddTrees.h>
-
-Double_t bethe_bloch_aleph(Double_t bg, Double_t p1, Double_t p2, Double_t p3, Double_t p4, Double_t p5) {
-    Double_t beta = bg / TMath::Sqrt(1.0 + bg*bg);
-    Double_t aa   = TMath::Power(beta, p4);
-    Double_t bb   = TMath::Log(p3 + TMath::Power(1.0/bg, p5));
-    return (p2 - aa - bb) * p1 / aa;
-}
-
-Double_t get_expected_signal(Double_t p, Double_t mass, Double_t charge) {
-    const Double_t mMIP = 50.0;
-    const Double_t params[5] = {0.19310481, 4.26696118, 0.00522579, 2.38124907, 0.98055396};
-    const Double_t chFact = 2.3;
-
-    Double_t bg = p / mass;
-    if (bg < 0.05) return -999.;
-    Double_t bethe = mMIP
-                   * bethe_bloch_aleph(bg,
-                                       params[0], params[1], params[2],
-                                       params[3], params[4])
-                   * TMath::Power(charge, chFact);
-    return bethe >= 0 ? bethe : -999.;
-}
-
-Float_t getReso(Char_t* hypo, Float_t mom)
-{
-  TFile *file = TFile::Open("UD_LHC23_pass4_SingleGap/nSigmaTPCResolution.root", "READ");
-  auto gname = Form("nSigmaTPCres%s", hypo);
-  TGraph *gr = (TGraph*)file->Get(gname);
-  file->Close();
-  auto reso = gr->Eval(mom);
-  return reso;
-}
+#include <get_expected_signal.h>
+#include <getReso.h>
 
 std::vector<Double_t> topBinCenters(TH1 *h, Int_t nWanted)
 {
@@ -78,10 +48,10 @@ void nSigma_Plot(){
     const Double_t mergeDistanceFactor = 1.0;
     const Double_t nEntriesLimit = 1e6;
     const Bool_t TOFfilter = false;
-    const Bool_t plotTPC = true;
-    const Bool_t plotTOF = false;
+    const Bool_t plotTPC = false;
+    const Bool_t plotTOF = true;
     const Bool_t PeakZoom = true;
-    const Bool_t manualPredictPeaks = true;
+    const Bool_t manualPredictPeaks = false;
 
     if (manualPredictPeaks) gROOT->SetBatch(kFALSE);
     else gROOT->SetBatch(kTRUE);
@@ -173,8 +143,8 @@ void nSigma_Plot(){
 
                     Double_t sigma0, mu;
                     if (isTPCmode) {
-                        Double_t resoHypAbs = getReso((Char_t*)subs[hyp], pMid); 
-                        Double_t resoRefAbs = getReso((Char_t*)subs[ref],  pMid); 
+                        Double_t resoHypAbs = getReso(kTPC, (Char_t*)subs[hyp], pMid); 
+                        Double_t resoRefAbs = getReso(kTPC, (Char_t*)subs[ref],  pMid); 
 
                         Double_t fracHyp = resoHypAbs / dHyp;
                         Double_t fracRef = resoRefAbs / dRef;
@@ -182,8 +152,10 @@ void nSigma_Plot(){
                         sigma0 = (fracHyp / fracRef) * (dHyp / dRef);
                         mu     = (dHyp/dRef - 1.0) / fracRef;
                     } else {
-                        sigma0 = (resoTOF[hyp] / resoTOF[ref]) * (1.0 / (bHyp * bHyp));
-                        mu     = (bRef - bHyp) / (bHyp * bHyp * resoTOF[hyp]);
+                        Double_t resoHypAbs = getReso(kTOF, (Char_t*)subs[hyp], pMid);
+                        Double_t resoRefAbs = getReso(kTOF, (Char_t*)subs[ref], pMid);
+                        sigma0 = (resoHypAbs / resoRefAbs) * (1.0 / (bHyp * bHyp));
+                        mu     = (bRef - bHyp) / (bHyp * resoHypAbs);
                     }
                     sigma0 = std::clamp(sigma0, 0.5, 15.0);
                     if (mu < xMin || mu > xMax) continue;

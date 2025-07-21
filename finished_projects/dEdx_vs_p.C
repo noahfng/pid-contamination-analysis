@@ -24,11 +24,11 @@ void dEdx_vs_p() {
     chain.SetBranchAddress("fTrkTPCinnerParam", inner);
     chain.SetBranchAddress("fTrkTPCsignal",     signal);
 
-    Long64_t nEntries = chain.GetEntries();
-    nEntries = std::min(nEntries, static_cast<Long64_t>(1e7));
+    const Double_t nEntriesLimit = 1e6;
     const Int_t nPoints = 500;
     const Double_t pMin = 0.3, pMax = 5.0;
     const Double_t step = (pMax - pMin) / nPoints;
+    Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
     TH2F *hist = new TH2F("dedx_vs_p1",
                           "TPC dE/dx vs p;p [GeV/c];dE/dx [arb.u.]",
                           250, pMin, pMax,
