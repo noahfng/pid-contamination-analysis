@@ -3,7 +3,7 @@ enum ResoMode { kTPC, kTOF };
 Float_t getReso(ResoMode mode, const Char_t* hypo, Float_t mom) {
     // open the same file just once
     static TFile* file = TFile::Open(
-        "UD_LHC23_pass4_SingleGap/dEdxResolution.root", "READ"
+        "UD_LHC23_pass4_SingleGap/nSigma_Resolution.root", "READ"
     );
     if (!file || file->IsZombie()) {
         std::cerr << "Error opening resolution file\n";
