@@ -22,32 +22,8 @@
 #include <get_expected_signal.h>
 #include <getReso.h>
 
-std::vector<Double_t> topBinCenters(TH1 *h, Int_t nWanted)
-{
-   std::vector<std::pair<Double_t, Int_t>> bins;        
-   for (Int_t b = 1; b <= h->GetNbinsX(); ++b)
-       bins.emplace_back(h->GetBinContent(b), b);
-
-   std::partial_sort(bins.begin(), bins.begin()+nWanted, bins.end(),
-                     std::greater<>());              
-
-   std::vector<Double_t> xc;
-   for (Int_t i = 0; i < nWanted; ++i)
-       xc.push_back(h->GetXaxis()->GetBinCenter(bins[i].second));
-
-   std::sort(xc.begin(), xc.end());                 
-   return xc;
-}
 
 void nSigma_Plot(){
-    ROOT::Math::MinimizerOptions::SetDefaultMinimizer("Minuit2", "Migrad");
-    ROOT::Math::MinimizerOptions::SetDefaultTolerance(1E-6);
-    ROOT::Math::MinimizerOptions::SetDefaultErrorDef(1.0);
-    ROOT::Math::MinimizerOptions::SetDefaultPrecision(1E-8);
-    ROOT::Math::MinimizerOptions::SetDefaultMaxFunctionCalls(10000);
-    ROOT::Math::MinimizerOptions::SetDefaultStrategy(1);
-    ROOT::Math::MinimizerOptions::SetDefaultPrintLevel(0);
-
     const Int_t   nBins   = 500;
     const Double_t xMin   = -12.0, xMax = 18.0;
     const Double_t pStart = 0.35, pEnd = 0.45, step = 0.1;
@@ -58,7 +34,7 @@ void nSigma_Plot(){
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
     const Bool_t PeakZoom = false;
-    const Bool_t manualPredictPeaks = true;
+    const Bool_t manualPredictPeaks = false;
 
     gROOT->SetBatch(!manualPredictPeaks);
     gStyle->SetOptStat(1);
