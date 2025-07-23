@@ -20,7 +20,7 @@
 #include <getReso.h>
 
 
-void nSigma_Plot(){
+void nSigmaDebug(){
     const Int_t   nBins   = 500;
     const Double_t xMin   = -12.0, xMax = 18.0;
     const Double_t pStart = 0.35, pEnd = 0.45, step = 0.1;
@@ -31,9 +31,8 @@ void nSigma_Plot(){
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
     const Bool_t PeakZoom = false;
-    const Bool_t manualPredictPeaks = false;
 
-    gROOT->SetBatch(!manualPredictPeaks);
+    gROOT->SetBatch(kFALSE);
     gStyle->SetOptStat(1);
 
     const Char_t *baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
@@ -253,42 +252,37 @@ void nSigma_Plot(){
 
                 Int_t manualNGauss = 0;
                 std::vector<double> manualMeans, manualSigmas;
-                if (manualPredictPeaks) {
-                    c->cd();
-                    c->Clear();
-                    h->Draw("E1");
-                    c->Modified();
-                    c->Update();
-                    c->RaiseWindow();
-                    gSystem->ProcessEvents();
-                    std::cout << "How many Gaussians? ";
-                    std::cin >> manualNGauss;
-                    if (manualNGauss > 0) {
-                        manualMeans.resize(manualNGauss);
-                        std::cout << "Enter " << manualNGauss << " mean positions space-separated: ";
-                        for (int i = 0; i < manualNGauss; ++i) {
-                            std::cin >> manualMeans[i];
-                        }
-                        manualSigmas.resize(manualNGauss);
-                        std::cout << "Enter " << manualNGauss << " sigma (width) guesses for each peak (space‑separated): ";
-                        for (int i = 0; i < manualNGauss; ++i)
-                            std::cin >> manualSigmas[i];
-                    } else {
-                        std::cerr << "Invalid number of Gaussians; falling back to automatic mode." << std::endl;
-                        manualNGauss = 0;
+
+                c->cd();
+                c->Clear();
+                h->Draw("E1");
+                c->Modified();
+                c->Update();
+                c->RaiseWindow();
+                gSystem->ProcessEvents();
+                std::cout << "How many Gaussians? ";
+                std::cin >> manualNGauss;
+                if (manualNGauss > 0) {
+                    manualMeans.resize(manualNGauss);
+                    std::cout << "Enter " << manualNGauss << " mean positions space-separated: ";
+                    for (int i = 0; i < manualNGauss; ++i) {
+                        std::cin >> manualMeans[i];
                     }
+                    manualSigmas.resize(manualNGauss);
+                    std::cout << "Enter " << manualNGauss << " sigma (width) guesses for each peak (space‑separated): ";
+                    for (int i = 0; i < manualNGauss; ++i)
+                        std::cin >> manualSigmas[i];
+                } else {
+                    std::cerr << "Invalid number of Gaussians; falling back to automatic mode." << std::endl;
+                    manualNGauss = 0;
                 }
 
                 size_t nG;
                 std::vector<double> means;
-                if (manualPredictPeaks && manualNGauss > 0) {
+                if (manualNGauss > 0) {
                     nG = manualNGauss;
                     means = manualMeans;
-                } else {
-                    nG = merged.size();
-                    means.reserve(nG);
-                    for (auto &pk : merged) means.push_back(pk.mu);
-                }
+                } 
                 if (nG < 1) { c->Print(pdfName); delete h; continue; }
                 
                 Double_t fit_lo = x_low;
@@ -305,7 +299,7 @@ void nSigma_Plot(){
                 sum->SetParLimits(idxLine, 0, 10.0);
                 sum->SetParameter(idxLine, 1.0);
                 for (size_t i = 0; i < nG; ++i) {
-                    if (manualPredictPeaks && manualNGauss > 0) {
+                    if (manualNGauss > 0) {
                         Double_t mu0 = means[i];
                         Double_t sig0 = manualSigmas[i]; 
                         Int_t    bin = h->FindBin(mu0);        
@@ -324,20 +318,7 @@ void nSigma_Plot(){
                         sum->GetParLimits(3*i+2, lo, hi);
                         std::cout << Form("  Peak %zu σ‑limits=[%.3f,%.3f], seed=%.3f\n", i, lo, hi, sig0);
                     }
-                    else {
-                        const auto &p = merged[i];
-                        std::cout << "Guessed mu: " << p.mu << ", Guessed sigma: " << p.sigma << std::endl;
-
-                        sum->SetParLimits(3*i, 0.0, std::max(h->GetMaximum()*1.2, p.A*1.05));
-                        sum->SetParameter(3*i, p.A);
-
-                        double dMu = std::max(muWindow, 0.1*std::abs(p.mu));
-                        sum->SetParLimits(3*i+1, p.mu - dMu, p.mu + dMu);
-                        sum->SetParameter(3*i+1, p.mu);
-
-                        sum->SetParLimits(3*i+2, 0.5*p.sigma, 2.0*p.sigma);
-                        sum->SetParameter(3*i+2, p.sigma);
-                    }
+                
                 }
                 h->Fit(sum, "RQ0S", "", fit_lo, fit_hi);
                 h->Draw("E1");
@@ -349,23 +330,13 @@ void nSigma_Plot(){
                 sum->SetLineWidth(2); 
                 sum->SetNpx(500); 
                 sum->Draw("same");
-                if (!manualPredictPeaks) {
-                    for (const auto &pk : merged) {
-                        Double_t mu = pk.mu;
-                        TLine *l = new TLine(mu, 0, mu, yMax);
-                        Int_t col  = (pk.id >= 0) ? colors[pk.id] : kGray+2;
-                        l->SetLineColor(col);
-                        l->Draw();
-                    }
+                for (Int_t i = 0; i < nG; ++i) {
+                    Double_t mu = means[i];
+                    TLine *l = new TLine(mu, 0, mu, yMax);
+                    l->SetLineColor(colors[i % nParts]);
+                    l->Draw();
                 }
-                else {
-                    for (Int_t i = 0; i < nG; ++i) {
-                        Double_t mu = means[i];
-                        TLine *l = new TLine(mu, 0, mu, yMax);
-                        l->SetLineColor(colors[i % nParts]);
-                        l->Draw();
-                    }
-                }
+                
 
                 for (Int_t i = 0; i < nG; ++i) {
                     if (sum->GetParameter(3*i) <= 0) continue;
@@ -375,32 +346,13 @@ void nSigma_Plot(){
                     Double_t mu  = sum->GetParameter(3*i + 1);
                     Double_t sig = sum->GetParameter(3*i + 2);
                     std::cout << Form("A = %.3f, μ = %.3f, σ = %.3f\n", A, mu, sig);
-                    if (!manualPredictPeaks) {
-                        Int_t col = (merged[i].id >= 0) ? colors[merged[i].id] : kGray+2;
-                        g->SetLineColor(col);
-                    } else {
-                        g->SetLineColor(colors[i % nParts]);   
-                    }
+                    g->SetLineColor(colors[i % nParts]);   
                     g->SetLineStyle(2);
                     g->SetNpx(500);
                     g->Draw("same");
 
                     TString label;
-                    if (!manualPredictPeaks) {
-                        auto &ids = merged[i].merged_ids;
-                        std::sort(ids.begin(), ids.end());
-                        ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
-                        if (ids.size()==1) {
-                            label = names[ids[0]];
-                        } else {
-                            for (size_t j=0; j<ids.size(); ++j) {
-                                if (j) label += " + ";
-                                label += names[ids[j]];
-                            }
-                        }
-                    } else {
-                        label = Form("Peak %d", i);
-                    }
+                    label = Form("Peak %d", i);
                     leg->AddEntry(g, label, "l");
                 }
                 TPaveText *pt=new TPaveText(0.02,0.90,0.25,0.99,"NDC");
