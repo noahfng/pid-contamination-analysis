@@ -22,7 +22,7 @@
 
 void nSigmaDebug(){
     const Int_t   nBins   = 500;
-    const Double_t xMin   = -12.0, xMax = 18.0;
+    const Double_t xMin   = -30.0, xMax = 70.0;
     const Double_t pStart = 0.35, pEnd = 0.45, step = 0.1;
     const Double_t muWindow = 2.0;
     const Double_t mergeDistanceFactor = 1.0;
@@ -30,7 +30,6 @@ void nSigmaDebug(){
     const Bool_t TOFfilter = false;
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
-    const Bool_t PeakZoom = false;
 
     gROOT->SetBatch(kFALSE);
     gStyle->SetOptStat(1);
@@ -232,23 +231,6 @@ void nSigmaDebug(){
 
                 Double_t x_low  = xMin;
                 Double_t x_high = xMax;
-                
-                if (PeakZoom) {
-                    const Double_t Nsigma = 8.0;
-                    if (!merged.empty()) {
-                    x_low  = merged[0].mu - Nsigma * merged[0].sigma;
-                    x_high = merged[0].mu + Nsigma * merged[0].sigma;
-                    for (size_t i = 1; i < merged.size(); ++i) {
-                        Double_t this_lo = merged[i].mu - Nsigma * merged[i].sigma;
-                        Double_t this_hi = merged[i].mu + Nsigma * merged[i].sigma;
-                        x_low  = std::min(x_low,  this_lo);
-                        x_high = std::max(x_high, this_hi);
-                    }
-                    x_low  = std::max(x_low,  xMin);
-                    x_high = std::min(x_high, xMax);
-                    }
-                    h->GetXaxis()->SetRangeUser(x_low, x_high);
-                }
 
                 Int_t manualNGauss = 0;
                 std::vector<double> manualMeans, manualSigmas;
@@ -269,13 +251,11 @@ void nSigmaDebug(){
                         std::cin >> manualMeans[i];
                     }
                     manualSigmas.resize(manualNGauss);
-                    std::cout << "Enter " << manualNGauss << " sigma (width) guesses for each peak (space‑separated): ";
+                    std::cout << "Enter " << manualNGauss << " sigma (width) guesses for each peak (space.separated): ";
                     for (int i = 0; i < manualNGauss; ++i)
                         std::cin >> manualSigmas[i];
-                } else {
-                    std::cerr << "Invalid number of Gaussians; falling back to automatic mode." << std::endl;
-                    manualNGauss = 0;
-                }
+                } 
+                
 
                 size_t nG;
                 std::vector<double> means;
