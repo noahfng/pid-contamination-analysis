@@ -21,10 +21,15 @@ void nSigma_vs_p_Plot() {
     gStyle->SetOptStat(0);
     gStyle->SetPalette(kRainBow);
 
-    const Double_t yMin   = -30.0, yMax = 70.0;
+    const Double_t yMin   = -20.0, yMax = 30.0;
     const Bool_t plotTPC = true;
-    const Bool_t plotTOF = true;
-    const Double_t nEntriesLimit = 1e9;
+    const Bool_t plotTOF = false;
+    const Bool_t KaExclusion = false;
+    const Bool_t PrExclusion = false;
+    const Bool_t tofFilter = false;
+    const Double_t nEntriesLimit = 1e8;
+    const Int_t npoints = 500;
+    const Double_t pMin = 0.1, pMax = 10.0;
 
     const Char_t* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
 
@@ -40,11 +45,7 @@ void nSigma_vs_p_Plot() {
     }
 
     const Int_t NtrkMax = 2;
-    Float_t inner[NtrkMax] = {0};
-    Float_t tpcNS[5][NtrkMax] = {{0}};
-    Float_t tofNS[5][NtrkMax] = {{0}};
-    Float_t tpcSignal[NtrkMax] = {0};
-    Float_t tofExpMom[NtrkMax] = {0};
+    Float_t inner[NtrkMax], tpcSignal[NtrkMax], tofExpMom[NtrkMax], tofNS[5][NtrkMax], tpcNS[5][NtrkMax];
     
     chain.SetBranchAddress("fTrkTPCsignal", tpcSignal);
     chain.SetBranchAddress("fTrkTPCinnerParam", inner);
@@ -58,8 +59,6 @@ void nSigma_vs_p_Plot() {
     const Double_t resoTOF[5]   = {0.013, 0.013, 0.013, 0.019, 0.020};
     const Double_t resoTPC[5]   = {0.085, 0.072, 0.074, 0.09, 0.08}; 
     const Int_t colors[5]  = {kBlue, kGreen+2, kOrange+7, kMagenta+2, kCyan+1};
-    const Int_t npoints = 200;
-    const Double_t pMin = 0.01, pMax = 5.0;
     Double_t pgrid[npoints];
     for (Int_t i = 0; i < npoints; ++i) {
         pgrid[i] = pMin + i*(pMax - pMin)/(npoints - 1);
@@ -72,12 +71,12 @@ void nSigma_vs_p_Plot() {
         histTPC[i] = new TH2F(
           Form("tpc_%s", subs[i]),
           Form("n#sigma_{%s} vs p (TPC);p [GeV/c];n#sigma_{%s}", names[i], names[i]),
-          100, pMin, pMax, 100, yMin, yMax
+          1000, pMin, pMax, 1000, yMin, yMax
         );
         histTOF[i] = new TH2F(
           Form("tof_%s", subs[i]),
           Form("n#sigma_{%s} vs p (TOF);p [GeV/c];n#sigma_{%s}", names[i], names[i]),
-          100, pMin, pMax, 100, yMin, yMax
+          1000, pMin, pMax, 1000, yMin, yMax
         );
     }
 
@@ -86,9 +85,16 @@ void nSigma_vs_p_Plot() {
         for (Int_t tr = 0; tr < NtrkMax; ++tr) {
             Float_t p = inner[tr];
             if (p <= 0) continue;
+            if (KaExclusion && !TMath::IsNaN(tofNS[3][tr]) && TMath::Abs(tofNS[3][tr]) < 3.0) 
+                continue;
+            if (PrExclusion && !TMath::IsNaN(tofNS[4][tr]) && TMath::Abs(tofNS[4][tr]) < 3.0) 
+                continue;
+            if (tofFilter && tofExpMom[tr]< 0)
+                continue;
+
             for (Int_t sp = 0; sp < 5; ++sp) {
                 if(plotTPC) histTPC[sp]->Fill(p, tpcNS[sp][tr]);
-                if (plotTOF && tofExpMom[tr] > 0)
+                if (plotTOF)
                     histTOF[sp]->Fill(p, tofNS[sp][tr]);
             }
         }
@@ -151,6 +157,7 @@ void nSigma_vs_p_Plot() {
     if (plotTPC) c->Print(Form("%s[", pdfTPC));
     if (plotTOF) c->Print(Form("%s[", pdfTOF));
     c->SetLogz();
+    c->SetLogx();
 
     for (Int_t i = 0; i < 5; ++i) {
         if (plotTPC) {

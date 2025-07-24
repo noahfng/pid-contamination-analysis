@@ -17,15 +17,23 @@ void dEdx_vs_p() {
     AddTrees(chain, base_dir);
 
     chain.SetBranchStatus("*", 0);
-    Float_t inner[2];
-    Float_t signal[2];
+    Float_t inner[2], signal[2], TOFnSigmaKa[2], TOFnSigmaPr[2], expMom[2];
     chain.SetBranchStatus("fTrkTPCinnerParam", 1);
     chain.SetBranchStatus("fTrkTPCsignal",     1);
+    chain.SetBranchStatus("fTrkTOFnSigmaKa", 1);
+    chain.SetBranchStatus("fTrkTOFnSigmaPr" , 1);
+    chain.SetBranchStatus("fTrkTOFexpMom", 1);
     chain.SetBranchAddress("fTrkTPCinnerParam", inner);
     chain.SetBranchAddress("fTrkTPCsignal",     signal);
+    chain.SetBranchAddress("fTrkTOFnSigmaKa", TOFnSigmaKa);
+    chain.SetBranchAddress("fTrkTOFnSigmaPr", TOFnSigmaPr);
+    chain.SetBranchAddress("fTrkTOFexpMom", expMom);
 
-    const Double_t nEntriesLimit = 1e6;
+    const Double_t nEntriesLimit = 1e8;
     const Int_t nPoints = 500;
+    const Bool_t KaExclusion = false;
+    const Bool_t PrExclusion = true;
+    const Bool_t tofFilter = false;
     const Double_t pMin = 0.3, pMax = 5.0;
     const Double_t step = (pMax - pMin) / nPoints;
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
@@ -33,10 +41,21 @@ void dEdx_vs_p() {
                           "TPC dE/dx vs p;p [GeV/c];dE/dx [arb.u.]",
                           250, pMin, pMax,
                           100,   0, 120);
-    for (Int_t i=0; i<nEntries; ++i) {
+
+    for (Long64_t i = 0; i < nEntries; ++i) {
         chain.GetEntry(i);
-        if (inner[0]>0 && signal[0]>0) hist->Fill(inner[0], signal[0]);
-        if (inner[1]>0 && signal[1]>0) hist->Fill(inner[1], signal[1]);
+        for (int t = 0; t < 2; ++t) {
+            if (expMom[t] < 0 && tofFilter)
+                continue;
+            if (inner[t] <= 0 || signal[t] <= 0)
+                continue;
+            if (KaExclusion && !TMath::IsNaN(TOFnSigmaKa[t]) && TMath::Abs(TOFnSigmaKa[t]) < 3.0) 
+                continue;
+            if (PrExclusion && !TMath::IsNaN(TOFnSigmaPr[t]) && TMath::Abs(TOFnSigmaPr[t]) < 3.0) 
+                continue;
+            
+            hist->Fill(inner[t], signal[t]);
+        }
     }
 
     const Int_t nParts = 5;
