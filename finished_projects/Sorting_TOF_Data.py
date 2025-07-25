@@ -579,22 +579,29 @@ df = pd.DataFrame.from_dict(json_data, orient='index')
 df.index.name = 'RunNumber'
 df.reset_index(inplace=True)
 
-# Sort by run number
+# Sort by RunNumber
 df['RunNumber'] = df['RunNumber'].astype(str)
 df.sort_values(by='RunNumber', inplace=True)
 
+# Estimate: % of p ≥ 0.3 tracks that have TOF
+df['est_p03_with_TOF'] = (df['withTOF'] / df['withP03']) * 100
+
 # Plot
-plt.figure(figsize=(15, 7))
+plt.figure(figsize=(18, 7))
 x = range(len(df))
-width = 0.4
+width = 0.3
 
+# Bar plots
 plt.bar(x, df['withTOF'], width=width, label='% With TOF')
-plt.bar([i + width for i in x], df['withP03'], width=width, label='% With P ≥ 0.3')
+plt.bar([i + width for i in x], df['est_p03_with_TOF'], width=width, label='% Est_p03_with_TOF')
 
+
+
+# Labels & legend
 plt.xlabel('Run Number')
 plt.ylabel('Percentage (%)')
-plt.title('Fraction of Events With TOF and P ≥ 0.3 by Run Number')
-plt.xticks([i + width/2 for i in x], df['RunNumber'], rotation=90)
+plt.title('TOF and Momentum Distribution with Estimated Conditional TOF Rate')
+plt.xticks([i + width/2 for i in x], df['RunNumber'], rotation=90, fontsize=7)
 plt.ylim(0, 100)
 plt.legend()
 plt.tight_layout()
