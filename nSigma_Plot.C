@@ -24,14 +24,14 @@ void nSigma_Plot(){
     const Int_t nParts = helper::nParts;
     const Int_t NtrkMax = help->NtrkMax;
     const Int_t   nBins   = 500;
-    const Double_t xMin   = -30.0, xMax = 70.0;
-    const Double_t pStart = 0.30, pEnd = 0.7, step = 0.1;
+    const Double_t xMin   = -30.0, xMax = 24.0;
+    const Double_t pStart = 0.35, pEnd = 0.75, step = 0.1;
     const Double_t muWindow = 0.5;
     const Double_t mergeDistanceFactor = 1.0;
     const Double_t nEntriesLimit = 1e7;
-    const Bool_t TOFfilter = false;
+    const Bool_t TOFfilter = true;
     const Bool_t KaExclusion = false;
-    const Bool_t PrExclusion = false;
+    const Bool_t PrExclusion = true;
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
     const Bool_t PeakZoom = true;
@@ -363,6 +363,11 @@ void nSigma_Plot(){
                 for (Int_t i = 0; i < nG; ++i) {
                     if (sum->GetParameter(3*i) <= 0) continue;
                     TF1 *g = new TF1(Form("g_%d_%d", ref, i), "gaus", x_low, x_high);
+                    g->SetParameters(
+                        sum->GetParameter(3*i),
+                        sum->GetParameter(3*i+1),
+                        sum->GetParameter(3*i+2)
+                    );
                     if (!manualPredictPeaks) {
                         Int_t col = (merged[i].id >= 0) ? help->colors[merged[i].id] : kGray+2;
                         g->SetLineColor(col);
