@@ -23,14 +23,14 @@ void nSigmaDebug(){
     const Int_t nParts = helper::nParts;
     const Int_t NtrkMax = help->NtrkMax;
     const Int_t   nBins   = 500;
-    const Double_t xMin   = -12.0, xMax = 10.0;
-    const Double_t pStart = 0.75, pEnd = 0.85, step = 0.1;
+    const Double_t xMin   = -12.0, xMax = 15.0;
+    const Double_t pStart = 0.45, pEnd = 0.55, step = 0.1;
     const Double_t muWindow = 0.5;
-    const Double_t mergeDistanceFactor = 1.0;
+    const Double_t mergeDistanceFactor = 0.5;
     const Double_t nEntriesLimit = 1e7;
     const Bool_t TOFfilter = true;
-    const Bool_t KaExclusion = true;
-    const Bool_t PrExclusion = true;
+    const Bool_t KaExclusion = false;
+    const Bool_t PrExclusion = false;
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
     const std::array<bool, nParts> doPid = {{true, false, false, false, false}};
@@ -111,7 +111,7 @@ void nSigmaDebug(){
         }        
         for (int ref = 0; ref < nParts; ++ref) {
             if (!doPid[ref]) continue;
-            TString pdfName = Form("nSigma%s_%s_%.2f<p<%.2f_Pr+KaExclusion.pdf", suffix.Data(), help->pNames[ref], pStart, pEnd);
+            TString pdfName = Form("nSigma%s_%s_%.2f<p<%.2f.pdf", suffix.Data(), help->pNames[ref], pStart, pEnd);
             TCanvas* c = new TCanvas("c","", 950, 700);
             c->SetLeftMargin(0.15);
             c->SetLogy();
@@ -237,7 +237,7 @@ void nSigmaDebug(){
                 Double_t x_high = xMax;
 
                 Int_t manualNGauss = 0;
-                std::vector<double> manualMeans, manualSigmas;
+                std::vector<Double_t> manualMeans, manualSigmas, manualAmps;
 
                 c->cd();
                 c->Clear();
@@ -250,17 +250,21 @@ void nSigmaDebug(){
                 std::cin >> manualNGauss;
                 if (manualNGauss > 0) {
                     manualMeans.resize(manualNGauss);
-                    std::cout << "Enter " << manualNGauss << " mean positions space-separated: ";
+                    std::cout << "Enter " << manualNGauss << " mean positions (space-separated): ";
                     for (int i = 0; i < manualNGauss; ++i) {
                         std::cin >> manualMeans[i];
                     }
                     manualSigmas.resize(manualNGauss);
-                    std::cout << "Enter " << manualNGauss << " sigma (width) guesses for each peak (space.separated): ";
-                    for (int i = 0; i < manualNGauss; ++i)
+                    std::cout << "Enter " << manualNGauss << " sigma (width) guesses for each peak (space-separated): ";
+                    for (int i = 0; i < manualNGauss; ++i){
                         std::cin >> manualSigmas[i];
-                } 
-                
-
+                    }
+                    manualAmps.resize(manualNGauss);
+                    std::cout << "Enter " << manualNGauss << " amplitude guesses for each peak (space-separated): ";
+                    for (int i = 0; i < manualNGauss; ++i){
+                        std::cin >> manualAmps[i];
+                    }
+                }
                 size_t nG;
                 std::vector<double> means;
                 if (manualNGauss > 0) {
@@ -286,8 +290,7 @@ void nSigmaDebug(){
                     if (manualNGauss > 0) {
                         Double_t mu0 = means[i];
                         Double_t sig0 = manualSigmas[i]; 
-                        Int_t    bin = h->FindBin(mu0);        
-                        Double_t amp = h->GetBinContent(bin);
+                        Double_t amp = manualAmps[i];      
 
                         sum->SetParLimits(3*i+0, 0.0, std::max(h->GetMaximum()*1.2, 1.05*amp));
                         sum->SetParameter(3*i+0, amp);
@@ -304,7 +307,7 @@ void nSigmaDebug(){
                     }
                 
                 }
-                h->Fit(sum, "RQ0S", "", fit_lo, fit_hi);
+                help->FitHistogramByChi2(h, sum, fit_lo, fit_hi);
                 h->Draw("E1");
                 Double_t yMax = 1.25 * h->GetMaximum();
                 TLegend* leg = new TLegend(0, 0.10, 0.15, 0.30);

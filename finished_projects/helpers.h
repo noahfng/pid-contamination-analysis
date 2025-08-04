@@ -3,6 +3,12 @@
 #include "TFile.h"
 #include "TGraph.h"
 #include "TString.h"
+#include "TH1.h"
+#include "TF1.h"
+#include "TMath.h"
+#include "Math/Minimizer.h"
+#include "Math/Factory.h"
+#include "Math/Functor.h"
 
 class helper{
  public:
@@ -87,6 +93,76 @@ class helper{
 
       return gr->Eval(mom);
   };
+
+  inline void FitHistogramByChi2(TH1* hist, TF1* func, double xlo, double xhi) {
+    func->SetRange(xlo, xhi);
+    std::unique_ptr<ROOT::Math::Minimizer> minimizer(
+        ROOT::Math::Factory::CreateMinimizer("Minuit2", ""));
+    const int nPar = func->GetNpar();
+    auto chi2_fcn = [&](const double *par) {
+        for (int i = 0; i < nPar; ++i) {
+            func->SetParameter(i, par[i]);
+        }
+        double chi2 = 0;
+        int usedBins = 0;
+        int nbins = hist->GetNbinsX();
+        for (int ib = 1; ib <= nbins; ++ib) {
+            double x   = hist->GetBinCenter(ib);
+            if (x < xlo || x > xhi) continue;
+            double y   = hist->GetBinContent(ib);
+            double err = hist->GetBinError(ib);
+            if (err <= 0) continue;
+            double yfit = func->Eval(x);
+            chi2 += (y - yfit)*(y - yfit)/(err*err);
+            ++usedBins;
+        }
+        return chi2;
+    };
+
+    ROOT::Math::Functor fcn(chi2_fcn, nPar);
+    minimizer->SetFunction(fcn);
+
+    for (int i = 0; i < nPar; ++i) {
+        const char* name = func->GetParName(i);
+        double      val  = func->GetParameter(i);
+        double      err  = func->GetParError(i);
+        double      step = (err > 0 ? err : (fabs(val)*0.1 + 1e-3));
+
+        double low = 0, up = 0;
+        func->GetParLimits(i, low, up);
+
+        if (up > low) {
+            minimizer->SetLimitedVariable(i, name, val, step, low, up);
+        } else {
+            minimizer->SetVariable(i, name, val, step);
+        }
+    }
+
+    minimizer->Minimize();
+
+    const double* xs = minimizer->X();
+    for (int i = 0; i < nPar; ++i) {
+        func->SetParameter(i, xs[i]);
+    }
+
+    double chi2 = 0;
+    int usedBins = 0;
+    int nbins = hist->GetNbinsX();
+    for (int ib = 1; ib <= nbins; ++ib) {
+        double x   = hist->GetBinCenter(ib);
+        if (x < xlo || x > xhi) continue;
+        double y   = hist->GetBinContent(ib);
+        double err = hist->GetBinError(ib);
+        if (err <= 0) continue;
+        double yfit = func->Eval(x);
+        chi2 += (y - yfit)*(y - yfit)/(err*err);
+        ++usedBins;
+    }
+    int ndf = usedBins - nPar;
+    func->SetChisquare(chi2);
+    func->SetNDF(ndf);
+
+}
  private:
   // bethe-bloch according to ALICE parametrisation 
   Double_t bethe_bloch_aleph(Double_t bg, Double_t p1, Double_t p2, Double_t p3, Double_t p4, Double_t p5) {
