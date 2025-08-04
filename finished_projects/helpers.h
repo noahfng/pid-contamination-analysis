@@ -12,8 +12,6 @@
 
 class helper{
  public:
-
-  // constants
   const Char_t* base_dir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
   const Int_t NtrkMax = 2;
 
@@ -28,14 +26,11 @@ class helper{
   const Double_t resoTPC[nParts] = {0.085, 0.072, 0.074, 0.09, 0.08}; 
   const Double_t resoTOF[nParts]   = {0.013, 0.013, 0.013, 0.019, 0.020};
 
-  // functions
-  // relativ velocity beta
   Double_t beta(Float_t mass, Float_t mom)
   {
     return (mom / TMath::Sqrt(mass*mass + mom*mom));
   };
 
-  // compute expected TPC signal at given particle momentum, mass and charge
   Double_t getTPCSignal(Double_t p, Double_t mass, Double_t charge) {
     const Double_t mMIP = 50.0;
     const Double_t params[5] = {0.19310481, 4.26696118, 0.00522579, 2.38124907, 0.98055396};
@@ -96,8 +91,6 @@ class helper{
 
   inline void FitHistogramByChi2(TH1* hist, TF1* func, Double_t xlo, Double_t xhi) {
     func->SetRange(xlo, xhi);
-    std::unique_ptr<ROOT::Math::Minimizer> minimizer(
-        ROOT::Math::Factory::CreateMinimizer("Minuit2", ""));
     const Int_t nPar = func->GetNpar();
     auto chi2_fcn = [&](const Double_t *par) {
         for (Int_t i = 0; i < nPar; ++i) {
@@ -113,11 +106,12 @@ class helper{
             Double_t err = hist->GetBinError(ib);
             if (err <= 0) continue;
             Double_t yfit = func->Eval(x);
-            chi2 += (y - yfit)*(y - yfit)/(err*err);
+            chi2 += (y - yfit) * (y - yfit) / (err * err);
             ++usedBins;
         }
         return chi2;
     };
+    std::unique_ptr<ROOT::Math::Minimizer> minimizer(ROOT::Math::Factory::CreateMinimizer("Minuit2", ""));
 
     ROOT::Math::Functor fcn(chi2_fcn, nPar);
     minimizer->SetFunction(fcn);
@@ -161,15 +155,87 @@ class helper{
     Int_t ndf = usedBins - nPar;
     func->SetChisquare(chi2);
     func->SetNDF(ndf);
-
 }
- private:
-  // bethe-bloch according to ALICE parametrisation 
+
+  inline void FitHistogramsByChi2(TH1* h1, TH1* h2, TF1* func, Int_t nG, Double_t xlo, Double_t xhi) {
+    func->SetRange(xlo, xhi);
+    const Int_t nPar = 4*nG +2;
+    const Int_t offA1 = 0;         // Amplitudes for h1
+    const Int_t offA2 = nG;        // Amplitudes for h2
+    const Int_t offM  = 2*nG;      // means
+    const Int_t offS  = 3*nG;      // sigmas
+    const Int_t offP1 = 4*nG;      // constant background h1
+    const Int_t offP2 = 4*nG + 1;  // constant background h2
+
+    auto chi2_fcn = [&](const Double_t* par) {
+        for (Int_t i = 0; i < nPar; ++i) func->SetParameter(i, par[i]);
+        auto calc = [&](TH1* h, Int_t offA, Int_t offP) {
+            Double_t chi2 = 0; 
+            for (Int_t ib = 1; ib <= h->GetNbinsX(); ++ib) {
+                Double_t x   = h->GetBinCenter(ib);
+                Double_t y   = h->GetBinContent(ib);
+                Double_t err = h->GetBinError(ib);
+                if (err <= 0 || x < xlo || x > xhi) continue;
+                Double_t yfit = par[offP];
+                for (Int_t ig = 0; ig < nG; ++ig) {
+                    Double_t A  = par[offA + ig];
+                    Double_t mu = par[offM + ig];
+                    Double_t s = par[offS + ig];
+                    yfit += A * TMath::Gaus(x, mu, s, kTRUE);
+                }
+
+                chi2 += (y - yfit) * (y - yfit) / (err * err);
+            }
+            return chi2;
+        };
+        return calc(h1, offA1, offP1) + calc(h2, offA2, offP2);
+    };
+
+    auto minimizer = std::unique_ptr<ROOT::Math::Minimizer>(ROOT::Math::Factory::CreateMinimizer("Minuit2",""));
+
+    ROOT::Math::Functor fcn(chi2_fcn, nPar);
+    minimizer->SetFunction(fcn);
+
+    for (int i = 0; i < nPar; ++i) {
+        const char* name = func->GetParName(i);
+        Double_t    val  = func->GetParameter(i);
+        Double_t    err  = func->GetParError(i);
+        Double_t    step = (err>0?err:(fabs(val)*0.1+1e-3));
+        Double_t    lo, up;
+        func->GetParLimits(i, lo, up);
+
+        if (up > lo) {
+            minimizer->SetLimitedVariable(i, name, val, step, lo, up);
+        } else {
+            minimizer->SetVariable(i, name, val, step);
+        }
+    }
+
+    minimizer->Minimize();
+
+    const Double_t* xs = minimizer->X();
+    for (int i = 0; i < nPar; ++i) func->SetParameter(i, xs[i]);
+
+    Double_t chi2 = chi2_fcn(xs);
+    int usedBins = 0;
+    auto countBins = [&](TH1* h) {
+        for (int ib = 1; ib <= h->GetNbinsX(); ++ib) {
+            Double_t x   = h->GetBinCenter(ib);
+            Double_t err = h->GetBinError(ib);
+            if (err > 0 && x >= xlo && x <= xhi) ++usedBins;
+        }
+    };
+    countBins(h1); 
+    countBins(h2);
+    int ndf = usedBins - nPar;
+    func->SetChisquare(chi2);
+    func->SetNDF(ndf);
+}
+private:
   Double_t bethe_bloch_aleph(Double_t bg, Double_t p1, Double_t p2, Double_t p3, Double_t p4, Double_t p5) {
     Double_t beta = bg / TMath::Sqrt(1.0 + bg*bg);
     Double_t aa   = TMath::Power(beta, p4);
     Double_t bb   = TMath::Log(p3 + TMath::Power(1.0/bg, p5));
     return (p2 - aa - bb) * p1 / aa;
   };
-
 };
