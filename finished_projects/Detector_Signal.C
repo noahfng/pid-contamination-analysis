@@ -79,7 +79,7 @@ void Detector_Signal() {
 
     for (Long64_t i = 0; i < nEntries; ++i) {
         chain.GetEntry(i);
-        for (int trk = 0; trk < NtrkMax; ++trk) {
+        for (Int_t trk = 0; trk < NtrkMax; ++trk) {
             Double_t p = inner[trk];
             Int_t    ibin = Int_t((p - pStart)/step);
             if (ibin < 0 || ibin >= nSteps) continue;  
@@ -95,8 +95,8 @@ void Detector_Signal() {
 
     TCanvas* cTPC = nullptr;
     TCanvas* cTOF = nullptr;
-    const char* fTPC = "TPCSignalDistribution.pdf";
-    const char* fTOF = "TOFSignalDistribution.pdf";
+    const Char_t* fTPC = "TPCSignalDistribution.pdf";
+    const Char_t* fTOF = "TOFSignalDistribution.pdf";
 
     if (plotTPC) {
         cTPC = new TCanvas("cTPC","TPC slices",800,600);

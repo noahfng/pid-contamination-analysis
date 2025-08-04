@@ -53,7 +53,7 @@ void dEdx_vs_p() {
 
     for (Long64_t i = 0; i < nEntries; ++i) {
         chain.GetEntry(i);
-        for (int t = 0; t < NtrkMax; ++t) {
+        for (Int_t t = 0; t < NtrkMax; ++t) {
             if (expMom[t] < 0 && tofFilter)
                 continue;
             if (inner[t] <= 0 || signal[t] <= 0)

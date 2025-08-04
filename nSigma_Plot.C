@@ -24,19 +24,19 @@ void nSigma_Plot(){
     const Int_t nParts = helper::nParts;
     const Int_t NtrkMax = help->NtrkMax;
     const Int_t   nBins   = 500;
-    const Double_t xMin   = -30.0, xMax = 24.0;
-    const Double_t pStart = 0.35, pEnd = 0.75, step = 0.1;
+    const Double_t xMin   = -12.0, xMax = 10.0;
+    const Double_t pStart = 0.45, pEnd = 0.55, step = 0.1;
     const Double_t muWindow = 0.5;
     const Double_t mergeDistanceFactor = 1.0;
     const Double_t nEntriesLimit = 1e7;
     const Bool_t TOFfilter = true;
     const Bool_t KaExclusion = false;
-    const Bool_t PrExclusion = true;
+    const Bool_t PrExclusion = false;
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
-    const Bool_t PeakZoom = true;
-    const Bool_t manualPredictPeaks = false;
-    const std::array<bool, nParts> doPid = {{true, false, false, false, false}};
+    const Bool_t PeakZoom = false;
+    const Bool_t manualPredictPeaks = true;
+    const std::array<Bool_t, nParts> doPid = {{true, false, false, false, false}};
 
     gROOT->SetBatch(!manualPredictPeaks);
     gStyle->SetOptStat(1);
@@ -71,14 +71,14 @@ void nSigma_Plot(){
         const Double_t pMin   = isTPCmode ? pStart : std::max(pStart, 0.4);
         const Int_t    nSteps = Int_t(std::floor((pEnd - pMin) / step + 0.5));
         std::vector<Double_t> pEdges(nSteps+1);
-        for (int i = 0; i <= nSteps; ++i) {
+        for (Int_t i = 0; i <= nSteps; ++i) {
             pEdges[i] = pMin + i * step;
         }
         TString suffix = isTPCmode ? "TPC" : "TOF";
         std::vector<std::vector<TH1F*>> hists(nParts, std::vector<TH1F*>(nSteps,nullptr));
-        for (int pid = 0; pid < nParts; ++pid) {
+        for (Int_t pid = 0; pid < nParts; ++pid) {
             if (!doPid[pid]) continue;
-            for (int i = 0; i < nSteps; ++i) {
+            for (Int_t i = 0; i < nSteps; ++i) {
                 TString name1 = Form("n#sigma_{%s} %g < p < %g GeV/c (%s)", 
                         help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data());
                 TString name2 = Form("n#sigma_{%s} %g < p < %g GeV/c (%s); n#sigma_{%s}; Counts",
@@ -93,7 +93,7 @@ void nSigma_Plot(){
         }
         for (Long64_t ev = 0; ev < nEntries; ++ev) {
             chain.GetEntry(ev);
-            for (int t = 0; t < NtrkMax; ++t) {
+            for (Int_t t = 0; t < NtrkMax; ++t) {
                 if (tofExpMom[t] < 0 && (!isTPCmode || TOFfilter)) 
                     continue;
                 if (KaExclusion && !TMath::IsNaN(tofNS[3][t]) && TMath::Abs(tofNS[3][t]) < 3.0) 
@@ -101,11 +101,11 @@ void nSigma_Plot(){
                 if (PrExclusion && !TMath::IsNaN(tofNS[4][t]) && TMath::Abs(tofNS[4][t]) < 3.0) 
                     continue;
                 Double_t pG = inner[t];
-                int bin = std::lower_bound(pEdges.begin(), pEdges.end(), pG)
+                Int_t bin = std::lower_bound(pEdges.begin(), pEdges.end(), pG)
                         - pEdges.begin() - 1;
                 if (bin < 0 || bin >= nSteps) 
                     continue;
-                for (int pid = 0; pid < nParts; ++pid) {
+                for (Int_t pid = 0; pid < nParts; ++pid) {
                     if (!doPid[pid]) continue;
                     Float_t val = isTPCmode ? tpcNS[pid][t] : tofNS[pid][t];
                     if (!TMath::IsNaN(val))
@@ -113,14 +113,14 @@ void nSigma_Plot(){
                 }
             }
         }        
-        for (int ref = 0; ref < nParts; ++ref) {
+        for (Int_t ref = 0; ref < nParts; ++ref) {
             if (!doPid[ref]) continue;
             TString pdfName = Form("nSigma%s_%s.pdf", suffix.Data(), help->pCodes[ref]);
             TCanvas* c = new TCanvas("c","", 950, 700);
             c->SetLeftMargin(0.15);
             c->SetLogy();
             c->Print(pdfName + "[");
-            for (int i = 0; i < nSteps; ++i) {
+            for (Int_t i = 0; i < nSteps; ++i) {
                 TH1F* h = hists[ref][i];
 
                 struct Peak {Double_t A, mu, sigma; Int_t id; std::vector<Int_t> merged_ids;Bool_t alwaysSeparate = false;};
@@ -247,7 +247,7 @@ void nSigma_Plot(){
                 }
 
                 Int_t manualNGauss = 0;
-                std::vector<double> manualMeans, manualSigmas;
+                std::vector<Double_t> manualMeans, manualSigmas, manualAmps;
                 if (manualPredictPeaks) {
                     c->cd();
                     c->Clear();
@@ -260,14 +260,20 @@ void nSigma_Plot(){
                     std::cin >> manualNGauss;
                     if (manualNGauss > 0) {
                         manualMeans.resize(manualNGauss);
-                        std::cout << "Enter " << manualNGauss << " mean positions space-separated: ";
+                        std::cout << "Enter " << manualNGauss << " mean positions (space-separated): ";
                         for (int i = 0; i < manualNGauss; ++i) {
                             std::cin >> manualMeans[i];
                         }
                         manualSigmas.resize(manualNGauss);
-                        std::cout << "Enter " << manualNGauss << " sigma (width) guesses for each peak (space‑separated): ";
-                        for (int i = 0; i < manualNGauss; ++i)
+                        std::cout << "Enter " << manualNGauss << " sigma (width) guesses for each peak (space-separated): ";
+                        for (int i = 0; i < manualNGauss; ++i){
                             std::cin >> manualSigmas[i];
+                        }
+                        manualAmps.resize(manualNGauss);
+                        std::cout << "Enter " << manualNGauss << " amplitude guesses for each peak (space-separated): ";
+                        for (int i = 0; i < manualNGauss; ++i){
+                            std::cin >> manualAmps[i];
+                        }
                     } else {
                         std::cerr << "Invalid number of Gaussians; falling back to automatic mode." << std::endl;
                         manualNGauss = 0;
@@ -275,7 +281,7 @@ void nSigma_Plot(){
                 }
 
                 size_t nG;
-                std::vector<double> means;
+                std::vector<Double_t> means;
                 if (manualPredictPeaks && manualNGauss > 0) {
                     nG = manualNGauss;
                     means = manualMeans;
@@ -303,8 +309,7 @@ void nSigma_Plot(){
                     if (manualPredictPeaks && manualNGauss > 0) {
                         Double_t mu0 = means[i];
                         Double_t sig0 = manualSigmas[i]; 
-                        Int_t    bin = h->FindBin(mu0);        
-                        Double_t amp = h->GetBinContent(bin);
+                        Double_t amp = manualAmps[i];
 
                         sum->SetParLimits(3*i+0, 0.0, std::max(h->GetMaximum()*1.2, 1.05*amp));
                         sum->SetParameter(3*i+0, amp);
@@ -324,7 +329,7 @@ void nSigma_Plot(){
                         sum->SetParLimits(3*i, 0.0, std::max(h->GetMaximum()*1.2, p.A*1.05));
                         sum->SetParameter(3*i, p.A);
 
-                        double dMu = std::max(muWindow, 0.1*std::abs(p.mu));
+                        Double_t dMu = std::max(muWindow, 0.1*std::abs(p.mu));
                         sum->SetParLimits(3*i+1, p.mu - dMu, p.mu + dMu);
                         sum->SetParameter(3*i+1, p.mu);
 
@@ -409,6 +414,7 @@ void nSigma_Plot(){
             c->Print(pdfName+"]"); 
         }
     };
-    if (plotTPC)  drawNSigma(true);   
-    if (plotTOF)  drawNSigma(false);  
+
+    if (plotTPC) drawNSigma(true);     
+    if (plotTOF) drawNSigma(false);  
 }

@@ -45,11 +45,11 @@ void countTOF() {
     chain.GetEntry(i);
 
     Int_t rn = runNumber[0]; 
-    bool hasTOF = false;
-    bool hasP03 = false;
+    Bool_t hasTOF = false;
+    Bool_t hasP03 = false;
 
     
-    for (int j = 0; j < NtrkMax; ++j) {
+    for (Int_t j = 0; j < NtrkMax; ++j) {
       if (TOFexpMom[j] >= 0) {
         hasTOF = true;
         break;
@@ -57,7 +57,7 @@ void countTOF() {
     }
 
     
-    for (int j = 0; j < NtrkMax; ++j) {
+    for (Int_t j = 0; j < NtrkMax; ++j) {
       if (innerParam[j] >= 0.3) { 
         hasP03 = true;
         break;
@@ -79,7 +79,7 @@ void countTOF() {
   std::ofstream jsonFile("run_counts.json");
   jsonFile << std::fixed << std::setprecision(2);
   jsonFile << "{\n";
-  bool first = true;
+  Bool_t first = true;
   for (auto rn : allRuns) {
     if (!first) jsonFile << ",\n";
     first = false;

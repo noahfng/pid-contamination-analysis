@@ -30,7 +30,7 @@ class helper{
 
   // functions
   // relativ velocity beta
-  Double_t beta(float mass, float mom)
+  Double_t beta(Float_t mass, Float_t mom)
   {
     return (mom / TMath::Sqrt(mass*mass + mom*mom));
   };
@@ -82,7 +82,7 @@ class helper{
       }
 
       // build name: "nSigmaTPCresEl" or "nSigmaTOFresPr", etc.
-      const char* prefix = (mode == kTPC ? "nSigmaTPCres" : "nSigmaTOFres");
+      const Char_t* prefix = (mode == kTPC ? "nSigmaTPCres" : "nSigmaTOFres");
       TString gname = Form("%s%s", prefix, hypo);
 
       auto gr = dynamic_cast<TGraph*>(file->Get(gname));
@@ -94,25 +94,25 @@ class helper{
       return gr->Eval(mom);
   };
 
-  inline void FitHistogramByChi2(TH1* hist, TF1* func, double xlo, double xhi) {
+  inline void FitHistogramByChi2(TH1* hist, TF1* func, Double_t xlo, Double_t xhi) {
     func->SetRange(xlo, xhi);
     std::unique_ptr<ROOT::Math::Minimizer> minimizer(
         ROOT::Math::Factory::CreateMinimizer("Minuit2", ""));
-    const int nPar = func->GetNpar();
-    auto chi2_fcn = [&](const double *par) {
-        for (int i = 0; i < nPar; ++i) {
+    const Int_t nPar = func->GetNpar();
+    auto chi2_fcn = [&](const Double_t *par) {
+        for (Int_t i = 0; i < nPar; ++i) {
             func->SetParameter(i, par[i]);
         }
-        double chi2 = 0;
-        int usedBins = 0;
-        int nbins = hist->GetNbinsX();
-        for (int ib = 1; ib <= nbins; ++ib) {
-            double x   = hist->GetBinCenter(ib);
+        Double_t chi2 = 0;
+        Int_t usedBins = 0;
+        Int_t nbins = hist->GetNbinsX();
+        for (Int_t ib = 1; ib <= nbins; ++ib) {
+            Double_t x   = hist->GetBinCenter(ib);
             if (x < xlo || x > xhi) continue;
-            double y   = hist->GetBinContent(ib);
-            double err = hist->GetBinError(ib);
+            Double_t y   = hist->GetBinContent(ib);
+            Double_t err = hist->GetBinError(ib);
             if (err <= 0) continue;
-            double yfit = func->Eval(x);
+            Double_t yfit = func->Eval(x);
             chi2 += (y - yfit)*(y - yfit)/(err*err);
             ++usedBins;
         }
@@ -122,13 +122,13 @@ class helper{
     ROOT::Math::Functor fcn(chi2_fcn, nPar);
     minimizer->SetFunction(fcn);
 
-    for (int i = 0; i < nPar; ++i) {
-        const char* name = func->GetParName(i);
-        double      val  = func->GetParameter(i);
-        double      err  = func->GetParError(i);
-        double      step = (err > 0 ? err : (fabs(val)*0.1 + 1e-3));
+    for (Int_t i = 0; i < nPar; ++i) {
+        const Char_t* name = func->GetParName(i);
+        Double_t      val  = func->GetParameter(i);
+        Double_t      err  = func->GetParError(i);
+        Double_t      step = (err > 0 ? err : (fabs(val)*0.1 + 1e-3));
 
-        double low = 0, up = 0;
+        Double_t low = 0, up = 0;
         func->GetParLimits(i, low, up);
 
         if (up > low) {
@@ -140,25 +140,25 @@ class helper{
 
     minimizer->Minimize();
 
-    const double* xs = minimizer->X();
-    for (int i = 0; i < nPar; ++i) {
+    const Double_t* xs = minimizer->X();
+    for (Int_t i = 0; i < nPar; ++i) {
         func->SetParameter(i, xs[i]);
     }
 
-    double chi2 = 0;
-    int usedBins = 0;
-    int nbins = hist->GetNbinsX();
-    for (int ib = 1; ib <= nbins; ++ib) {
-        double x   = hist->GetBinCenter(ib);
+    Double_t chi2 = 0;
+    Int_t usedBins = 0;
+    Int_t nbins = hist->GetNbinsX();
+    for (Int_t ib = 1; ib <= nbins; ++ib) {
+        Double_t x   = hist->GetBinCenter(ib);
         if (x < xlo || x > xhi) continue;
-        double y   = hist->GetBinContent(ib);
-        double err = hist->GetBinError(ib);
+        Double_t y   = hist->GetBinContent(ib);
+        Double_t err = hist->GetBinError(ib);
         if (err <= 0) continue;
-        double yfit = func->Eval(x);
+        Double_t yfit = func->Eval(x);
         chi2 += (y - yfit)*(y - yfit)/(err*err);
         ++usedBins;
     }
-    int ndf = usedBins - nPar;
+    Int_t ndf = usedBins - nPar;
     func->SetChisquare(chi2);
     func->SetNDF(ndf);
 
