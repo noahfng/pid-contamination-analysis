@@ -31,7 +31,6 @@ void nSigma_Plot(){
     const Bool_t TOFfilter = false;
     const Bool_t KaExclusion = false;
     const Bool_t PrExclusion = false;
-    const Bool_t FitKaonExclComp = true;
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
     const Bool_t PeakZoom = false;
@@ -75,119 +74,53 @@ void nSigma_Plot(){
         for (Int_t i = 0; i <= nSteps; ++i) pEdges[i] = pMin + i * step;
         
         TString suffix = isTPCmode ? "TPC" : "TOF";
-        std::vector<std::vector<TH1F*>> h_noK(nParts, std::vector<TH1F*>(nSteps,nullptr));
-        std::vector<std::vector<TH1F*>> h_wK (nParts, std::vector<TH1F*>(nSteps,nullptr));
         std::vector<std::vector<TH1F*>> hists(nParts, std::vector<TH1F*>(nSteps,nullptr));
-        if (FitKaonExclComp){
-            for (Int_t pid = 0; pid < nParts; ++pid) {
-                if (!doPid[pid]) continue;
-                for (Int_t i = 0; i < nSteps; ++i) {
-                    TString name1_noK = Form("n#sigma_{%s} %g < p < %g GeV/c (%s-noKaExcl)", 
-                            help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data());
-                    TString name2_noK = Form("n#sigma_{%s} %g < p < %g GeV/c (%s-noKaExcl); n#sigma_{%s}; Counts",
-                            help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), help->pCodes[pid]);
-                    TString name1_wK = Form("n#sigma_{%s} %g < p < %g GeV/c (%s-KaExcl)", 
-                            help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data());
-                    TString name2_wK = Form("n#sigma_{%s} %g < p < %g GeV/c (%s-KaExcl); n#sigma_{%s}; Counts",
-                            help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), help->pCodes[pid]);
-                    h_noK[pid][i] = new TH1F(name1_noK, name2_noK, nBins, xMin, xMax);
-                    h_noK[pid][i]->Sumw2(true);
-                    h_noK[pid][i]->SetMarkerStyle(kFullCircle);
-                    h_noK[pid][i]->SetMarkerSize(0.75);
-                    h_noK[pid][i]->SetMarkerColor(kBlack);
-                    h_noK[pid][i]->SetLineColor(kBlack);
-                    h_wK[pid][i] = new TH1F(name1_wK, name2_wK, nBins, xMin, xMax);
-                    h_wK[pid][i]->Sumw2(true);
-                    h_wK[pid][i]->SetMarkerStyle(kFullCircle);
-                    h_wK[pid][i]->SetMarkerSize(0.75);
-                    h_wK[pid][i]->SetMarkerColor(kBlack);
-                    h_wK[pid][i]->SetLineColor(kBlack);
-                }
-            }
-            for (Long64_t ev = 0; ev < nEntries; ++ev) {
-                chain.GetEntry(ev);
-                for (Int_t t = 0; t < NtrkMax; ++t) {
-                    Double_t pG = inner[t];
-                    if (tofExpMom[t] < 0) continue;
-                    Int_t bin = std::lower_bound(pEdges.begin(), pEdges.end(), pG)
-                            - pEdges.begin() - 1;
-                    if (bin<0 || bin>=nSteps) continue;
-
-                    for (Int_t pid=0; pid<nParts; ++pid) if (doPid[pid]) {
-                        Float_t val = isTPCmode ? tpcNS[pid][t] : tofNS[pid][t];
-                        if (TMath::IsNaN(val)) continue;
-
-                        h_noK[pid][bin]->Fill(val);
-
-                        if (TMath::IsNaN(tofNS[3][t]) || TMath::Abs(tofNS[3][t])>=3)
-                            h_wK[pid][bin]->Fill(val);
-                    }
-                }
+        for (Int_t pid = 0; pid < nParts; ++pid) {
+            if (!doPid[pid]) continue;
+            for (Int_t i = 0; i < nSteps; ++i) {
+                TString name1 = Form("n#sigma_{%s} %g < p < %g GeV/c (%s)", 
+                        help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data());
+                TString name2 = Form("n#sigma_{%s} %g < p < %g GeV/c (%s); n#sigma_{%s}; Counts",
+                        help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), help->pCodes[pid]);
+                hists[pid][i] = new TH1F(name1, name2, nBins, xMin, xMax);
+                hists[pid][i]->Sumw2(true);
+                hists[pid][i]->SetMarkerStyle(kFullCircle);
+                hists[pid][i]->SetMarkerSize(0.75);
+                hists[pid][i]->SetMarkerColor(kBlack);
+                hists[pid][i]->SetLineColor(kBlack);
             }
         }
-        else {
-            for (Int_t pid = 0; pid < nParts; ++pid) {
-                if (!doPid[pid]) continue;
-                for (Int_t i = 0; i < nSteps; ++i) {
-                    TString name1 = Form("n#sigma_{%s} %g < p < %g GeV/c (%s)", 
-                            help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data());
-                    TString name2 = Form("n#sigma_{%s} %g < p < %g GeV/c (%s); n#sigma_{%s}; Counts",
-                            help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), help->pCodes[pid]);
-                    hists[pid][i] = new TH1F(name1, name2, nBins, xMin, xMax);
-                    hists[pid][i]->Sumw2(true);
-                    hists[pid][i]->SetMarkerStyle(kFullCircle);
-                    hists[pid][i]->SetMarkerSize(0.75);
-                    hists[pid][i]->SetMarkerColor(kBlack);
-                    hists[pid][i]->SetLineColor(kBlack);
+        for (Long64_t ev = 0; ev < nEntries; ++ev) {
+            chain.GetEntry(ev);
+            for (Int_t t = 0; t < NtrkMax; ++t) {
+                if (tofExpMom[t] < 0 && (!isTPCmode || TOFfilter)) 
+                    continue;
+                if (KaExclusion && !TMath::IsNaN(tofNS[3][t]) && TMath::Abs(tofNS[3][t]) < 3.0) 
+                    continue;
+                if (PrExclusion && !TMath::IsNaN(tofNS[4][t]) && TMath::Abs(tofNS[4][t]) < 3.0) 
+                    continue;
+                Double_t pG = inner[t];
+                Int_t bin = std::lower_bound(pEdges.begin(), pEdges.end(), pG)
+                        - pEdges.begin() - 1;
+                if (bin < 0 || bin >= nSteps) 
+                    continue;
+                for (Int_t pid = 0; pid < nParts; ++pid) {
+                    if (!doPid[pid]) continue;
+                    Float_t val = isTPCmode ? tpcNS[pid][t] : tofNS[pid][t];
+                    if (!TMath::IsNaN(val))
+                        hists[pid][bin]->Fill(val);
                 }
             }
-            for (Long64_t ev = 0; ev < nEntries; ++ev) {
-                chain.GetEntry(ev);
-                for (Int_t t = 0; t < NtrkMax; ++t) {
-                    if (tofExpMom[t] < 0 && (!isTPCmode || TOFfilter)) 
-                        continue;
-                    if (KaExclusion && !TMath::IsNaN(tofNS[3][t]) && TMath::Abs(tofNS[3][t]) < 3.0) 
-                        continue;
-                    if (PrExclusion && !TMath::IsNaN(tofNS[4][t]) && TMath::Abs(tofNS[4][t]) < 3.0) 
-                        continue;
-                    Double_t pG = inner[t];
-                    Int_t bin = std::lower_bound(pEdges.begin(), pEdges.end(), pG)
-                            - pEdges.begin() - 1;
-                    if (bin < 0 || bin >= nSteps) 
-                        continue;
-                    for (Int_t pid = 0; pid < nParts; ++pid) {
-                        if (!doPid[pid]) continue;
-                        Float_t val = isTPCmode ? tpcNS[pid][t] : tofNS[pid][t];
-                        if (!TMath::IsNaN(val))
-                            hists[pid][bin]->Fill(val);
-                    }
-                }
-            }  
-        }
-              
+        }  
         for (Int_t ref = 0; ref < nParts; ++ref) {
             if (!doPid[ref]) continue;
-            TString pdfName = nullptr;
-            if (FitKaonExclComp){
-                pdfName = Form("nSigma%s_%s_KaonExclComp.pdf", suffix.Data(), help->pCodes[ref]);
-            }
-            else{
-                pdfName = Form("nSigma%s_%s.pdf", suffix.Data(), help->pCodes[ref]);
-            }
+            TString pdfName = Form("nSigma%s_%s.pdf", suffix.Data(), help->pCodes[ref]);
             TCanvas* c = new TCanvas("c","", 950, 700);
             c->SetLeftMargin(0.15);
             c->SetLogy();
             c->Print(pdfName + "[");
             for (Int_t i = 0; i < nSteps; ++i) {
-                TH1F* h1 = nullptr;
-                TH1F* h2 = nullptr;
-                if (FitKaonExclComp){
-                    h1 = h_noK[ref][i];
-                    h2 = h_wK [ref][i];
-                }
-                else {
-                    h1 = hists[ref][i];
-                }
+                TH1F* h1 = hists[ref][i];
                 struct Peak {Double_t A, mu, sigma; Int_t id; std::vector<Int_t> merged_ids;Bool_t alwaysSeparate = false;};
                 std::vector<Peak> seeds;
                 Double_t sliceMin = pEdges[i];
@@ -360,384 +293,121 @@ void nSigma_Plot(){
                 
                 Double_t fit_lo = x_low;
                 Double_t fit_hi = x_high;
-                if (FitKaonExclComp){
-                    Double_t fit_lo = x_low;
-                    Double_t fit_hi = x_high;
+                std::ostringstream form;
+                for (size_t i = 0; i < nG; ++i) {
+                    if (i) form << "+"; 
+                    form << "gaus(" << 3 * i << ")";
+                }
+                size_t idxLine = 3 * nG;
+                form << "+pol0(" << idxLine << ")";
+                TF1 *sum = new TF1("sum", form.str().c_str(), fit_lo, fit_hi);
+                sum->SetParLimits(idxLine, 0, 10.0);
+                sum->SetParameter(idxLine, 1.0);
+                for (size_t i = 0; i < nG; ++i) {
+                    if (manualPredictPeaks && manualNGauss > 0) {
+                        Double_t mu0 = means[i];
+                        Double_t sig0 = manualSigmas[i]; 
+                        Double_t amp = manualAmps[i];
 
-                    std::ostringstream form;
-                    for (size_t i = 0; i < nG; ++i) {
-                        if (i) form << "+";
-                        form << "gaus(" << 3*i << ")+"
-                        << "gaus(" << 3*(nG+i) << ")";
-                    }
-                    form << "+pol0(" << 4*nG << ")"  // background h1
-                        << "+pol0(" << 4*nG+1 << ")"; // background h2
+                        sum->SetParLimits(3*i+0, 0.0, std::max(h1->GetMaximum()*1.2, 1.05*amp));
+                        sum->SetParameter(3*i+0, amp);
 
-                    TF1* sum = new TF1("sum", form.str().c_str(), fit_lo, fit_hi);
-                    sum->SetNpx(500); 
-                    const Int_t offA1 = 0;
-                    const Int_t offA2 = nG;
-                    const Int_t offM  = 2*nG;
-                    const Int_t offS  = 3*nG;
-                    const Int_t offP1 = 4*nG;
-                    const Int_t offP2 = 4*nG + 1;
-                    sum->SetParLimits(offP1, 0, 10.0);
-                    sum->SetParameter(offP1, 1.0);
-                    sum->SetParLimits(offP2, 0, 10.0);
-                    sum->SetParameter(offP2, 1.0);
-                    for (size_t i = 0; i < nG; ++i) {
-                        if (manualPredictPeaks && manualNGauss > 0) {
-                            Double_t mu0 = means[i];
-                            Double_t sig0 = manualSigmas[i]; 
-                            Double_t amp = manualAmps[i]; 
+                        sum->SetParLimits(3*i+1, mu0 - muWindow, mu0 + muWindow);
+                        sum->SetParameter(3*i+1, mu0);
 
-                            sum->SetParLimits(offA1 + i, 0.0, std::max(h1->GetMaximum()*1.2, 1.05*amp));
-                            sum->SetParameter(offA1 + i, amp);
+                        sum->SetParLimits(3*i+2, sig0*0.5, sig0*2.0);
+                        sum->SetParameter(3*i+2, sig0);
 
-                            sum->SetParLimits(offA2 + i, 0, std::max(h1->GetMaximum()*1.2, 1.05*amp));
-                            sum->SetParameter (offA2 + i, amp);
-
-                            sum->SetParLimits(offM + i, mu0 - muWindow, mu0 + muWindow);
-                            sum->SetParameter(offM + i, mu0);
-
-                            sum->SetParLimits(offS + i, sig0*0.5, sig0*2.0);
-                            sum->SetParameter(offS + i, sig0);
-
-                            Double_t lo, hi;
-                            sum->GetParLimits(offS, lo, hi);
-                        }
-                        else {
-                            const auto &p = merged[i];
-
-                            sum->SetParLimits(offA1 + i, 0.0, std::max(h1->GetMaximum()*1.2, 1.05*p.A));
-                            sum->SetParameter(offA1 + i, p.A);
-
-                            sum->SetParLimits(offA2 + i, 0, std::max(h1->GetMaximum()*1.2, 1.05*p.A));
-                            sum->SetParameter (offA2 + i, p.A);
-
-                            sum->SetParLimits(offM + i, p.mu - muWindow, p.mu + muWindow);
-                            sum->SetParameter(offM + i, p.mu);
-
-                            sum->SetParLimits(offS + i, p.sigma*0.5, p.sigma*2.0);
-                            sum->SetParameter(offS + i, p.sigma);
-                        }
-                    }
-                    help->FitHistogramsByChi2(h1, h2, sum, nG, fit_lo, fit_hi);
-                    c->Clear();
-                    h1->Draw("E1");
-                    Double_t yMax1 = 1.25 * h1->GetMaximum();
-                    TLegend* leg1 = new TLegend(0, 0.10, 0.15, 0.30);
-                    leg1->SetBorderSize(0);
-                    leg1->SetFillStyle(0);
-                    std::vector<Double_t> par(sum->GetNpar());
-                    for(Int_t i=0; i<sum->GetNpar(); ++i) par[i] = sum->GetParameter(i);
-                    std::vector<Double_t> areas_noK(nG), areas_wK(nG);
-                    for (Int_t ig = 0; ig < nG; ++ig) {
-                        Double_t A1   = par[offA1 + ig];
-                        Double_t A2   = par[offA2 + ig];
-                        Double_t sig  = par[offS  + ig];
-                        areas_noK[ig] = A1  * sig * TMath::Sqrt(2*TMath::Pi());
-                        areas_wK [ig] = A2  * sig * TMath::Sqrt(2*TMath::Pi());
-                    }
-
-                    double sum01_noK = areas_noK[0] + areas_noK[1];
-                    double sum01_wK  = areas_wK [0] + areas_wK [1];
-                    double sum23_noK = areas_noK[2] + areas_noK[3];
-                    double sum23_wK  = areas_wK [2] + areas_wK [3];
-                    double R01 = (sum01_noK > 0) ? (sum01_noK - sum01_wK) / sum01_noK : 0.0;
-
-                    double R_e = 0.0;
-                    if (nG > 3 && sum23_noK > 0) {
-                        R_e = (sum23_noK - sum23_wK) / sum23_noK;
-                    }
-
-                    for(i = 0; i < nG; ++i){
-                        std::cout << Form("Peak-%d-area: %.2f -> %.2f\n", i+1, areas_noK[i], areas_wK[i]);
-                    }
-                    std::cout << Form("summed e-Peak-Reduction = %.2f %%\n", R_e   * 100);
-                    const Int_t nPoints = 500; 
-                    Double_t xlo = fit_lo, xhi = fit_hi;
-                    Double_t dx  = (xhi - xlo)/(nPoints-1);
-                    std::vector<Double_t> xv(nPoints), y1(nPoints), y2(nPoints);
-
-                    for(Int_t ip=0; ip<nPoints; ++ip) {
-                        Double_t x = xlo + ip*dx;
-                        xv[ip] = x;
-                        Double_t yy1 = par[offP1];
-                        Double_t yy2 = par[offP2];
-                        for(Int_t ig=0; ig<nG; ++ig) {
-                            Double_t A1  = par[offA1 + ig];
-                            Double_t A2  = par[offA2 + ig];
-                            Double_t mu  = par[offM  + ig];
-                            Double_t sig = par[offS  + ig];
-                            yy1 += A1 * TMath::Gaus(x, mu, sig, kFALSE);
-                            yy2 += A2 * TMath::Gaus(x, mu, sig, kFALSE);
-                        }
-                        y1[ip] = yy1;
-                        y2[ip] = yy2;
-                    }
-                    auto gSum1 = new TGraph(nPoints, xv.data(), y1.data());
-                    gSum1->SetLineColor(kRed);
-                    gSum1->SetLineWidth(2);
-                    gSum1->Draw("L SAME");
-
-                    auto gSum2 = new TGraph(nPoints, xv.data(), y2.data());
-                    gSum2->SetLineColor(kRed);
-                    gSum2->SetLineWidth(2);
-
-                    if (!manualPredictPeaks) {
-                        for (const auto &pk : merged) {
-                            Double_t mu = pk.mu;
-                            TLine *l = new TLine(mu, 0, mu, yMax1);
-                            Int_t col  = (pk.id >= 0) ? help->colors[pk.id] : kGray+2;
-                            l->SetLineColor(col);
-                            l->Draw();
-                        }
+                        Double_t lo, hi;
+                        sum->GetParLimits(3*i+2, lo, hi);
                     }
                     else {
-                        for (Int_t i = 0; i < nG; ++i) {
-                            Double_t mu = means[i];
-                            TLine *l = new TLine(mu, 0, mu, yMax1);
-                            l->SetLineColor(help->colors[i % nParts]);
-                            l->Draw();
-                        }
-                    }
-                    
-                    for (Int_t i = 0; i < nG; ++i) {
-                        if (sum->GetParameter(offA1 + i) < 0) continue;
-                        TF1 *g1 = new TF1(Form("g_%d_%d", ref, i), "gaus", x_low, x_high);
-                        g1->SetParameters(
-                            sum->GetParameter(offA1 + i),
-                            sum->GetParameter(offM + i),
-                            sum->GetParameter(offS + i)
-                        );
-                        if (!manualPredictPeaks) {
-                            Int_t col = (merged[i].id >= 0) ? help->colors[merged[i].id] : kGray+2;
-                            g1->SetLineColor(col);
-                        } else {
-                            g1->SetLineColor(help->colors[i % nParts]);   
-                        }
-                        g1->SetLineStyle(2);
-                        g1->SetNpx(500);
-                        g1->Draw("same");
+                        const auto &p = merged[i];
 
-                        TString label;
-                        if (!manualPredictPeaks) {
-                            auto &ids = merged[i].merged_ids;
-                            std::sort(ids.begin(), ids.end());
-                            ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
-                            if (ids.size()==1) {
-                                label = help->pCodes[ids[0]];
-                            } else {
-                                for (size_t j=0; j<ids.size(); ++j) {
-                                    if (j) label += " + ";
-                                    label += help->pCodes[ids[j]];
-                                }
-                            }
-                        } else {
-                            label = Form("Peak %d", i+1);
-                        }
-                        leg1->AddEntry(g1, label, "l");
-                    }
-                    TPaveText *pt1=new TPaveText(0.02,0.90,0.15,0.99,"NDC");
-                    pt1->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
-                    pt1->SetFillColorAlpha(0,0); 
-                    pt1->Draw("same");
-                    leg1->Draw();
-                    c->Print(pdfName);
-                    delete leg1;
-                    delete pt1;
+                        sum->SetParLimits(3*i, 0.0, std::max(h1->GetMaximum()*1.2, p.A*1.05));
+                        sum->SetParameter(3*i, p.A);
 
-                    c->Clear();
-                    h2->Draw("E1");
-                    gSum2->Draw("L SAME");
-                    TLegend* leg2 = new TLegend(0, 0.10, 0.15, 0.30);
-                    leg2->SetBorderSize(0);
-                    leg2->SetFillStyle(0);
-                    Double_t yMax2 = 1.25 * h2->GetMaximum();
-                    if (!manualPredictPeaks) {
-                        for (const auto &pk : merged) {
-                            Double_t mu = pk.mu;
-                            TLine *l = new TLine(mu, 0, mu, yMax2);
-                            Int_t col  = (pk.id >= 0) ? help->colors[pk.id] : kGray+2;
-                            l->SetLineColor(col);
-                            l->Draw();
-                        }
-                    }
-                    else {
-                        for (Int_t i = 0; i < nG; ++i) {
-                            Double_t mu = means[i];
-                            TLine *l = new TLine(mu, 0, mu, yMax2);
-                            l->SetLineColor(help->colors[i % nParts]);
-                            l->Draw();
-                        }
-                    }
-                    
-                    for (Int_t i = 0; i < nG; ++i) {
-                        if (sum->GetParameter(offA2 + i) < 0) continue;
-                        TF1 *g2 = new TF1(Form("g_%d_%d", ref, i), "gaus", x_low, x_high);
-                        g2->SetParameters(
-                            sum->GetParameter(offA2 + i),
-                            sum->GetParameter(offM + i),
-                            sum->GetParameter(offS + i)
-                        );
-                        if (!manualPredictPeaks) {
-                            Int_t col = (merged[i].id >= 0) ? help->colors[merged[i].id] : kGray+2;
-                            g2->SetLineColor(col);
-                        } else {
-                            g2->SetLineColor(help->colors[i % nParts]);   
-                        }
-                        g2->SetLineStyle(2);
-                        g2->SetNpx(500);
-                        g2->Draw("same");
+                        Double_t dMu = std::max(muWindow, 0.1*std::abs(p.mu));
+                        sum->SetParLimits(3*i+1, p.mu - dMu, p.mu + dMu);
+                        sum->SetParameter(3*i+1, p.mu);
 
-                        TString label;
-                        if (!manualPredictPeaks) {
-                            auto &ids = merged[i].merged_ids;
-                            std::sort(ids.begin(), ids.end());
-                            ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
-                            if (ids.size()==1) {
-                                label = help->pCodes[ids[0]];
-                            } else {
-                                for (size_t j=0; j<ids.size(); ++j) {
-                                    if (j) label += " + ";
-                                    label += help->pCodes[ids[j]];
-                                }
-                            }
-                        } else {
-                            label = Form("Peak %d", i+1);
-                        }
-                        leg2->AddEntry(g2, label, "l");
-                    } 
-                    TPaveText *pt2=new TPaveText(0.02,0.90,0.15,0.99,"NDC");
-                    pt2->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
-                    pt2->SetFillColorAlpha(0,0); 
-                    pt2->Draw("same");
-                    leg2->Draw();
-                    c->Print(pdfName);
-                    delete pt2;
-                    delete leg2;
-                    delete sum;
+                        sum->SetParLimits(3*i+2, 0.5*p.sigma, 2.0*p.sigma);
+                        sum->SetParameter(3*i+2, p.sigma);
+                    }
+                }
+                help->FitHistogramByChi2(h1, sum, x_low, x_high);
+                h1->Draw("E1");
+                Double_t yMax1 = 1.25 * h1->GetMaximum();
+                TLegend* leg = new TLegend(0, 0.10, 0.15, 0.30);
+                leg->SetBorderSize(0);
+                leg->SetFillStyle(0);
+                sum->SetLineColor(kRed); 
+                sum->SetLineWidth(2); 
+                sum->SetNpx(500); 
+                sum->Draw("same");
+
+                if (!manualPredictPeaks) {
+                    for (const auto &pk : merged) {
+                        Double_t mu = pk.mu;
+                        TLine *l = new TLine(mu, 0, mu, yMax1);
+                        Int_t col  = (pk.id >= 0) ? help->colors[pk.id] : kGray+2;
+                        l->SetLineColor(col);
+                        l->Draw();
+                    }
                 }
                 else {
-                    std::ostringstream form;
-                    for (size_t i = 0; i < nG; ++i) {
-                        if (i) form << "+"; 
-                        form << "gaus(" << 3 * i << ")";
-                    }
-                    size_t idxLine = 3 * nG;
-                    form << "+pol0(" << idxLine << ")";
-                    TF1 *sum = new TF1("sum", form.str().c_str(), fit_lo, fit_hi);
-                    sum->SetParLimits(idxLine, 0, 10.0);
-                    sum->SetParameter(idxLine, 1.0);
-                    for (size_t i = 0; i < nG; ++i) {
-                        if (manualPredictPeaks && manualNGauss > 0) {
-                            Double_t mu0 = means[i];
-                            Double_t sig0 = manualSigmas[i]; 
-                            Double_t amp = manualAmps[i];
-
-                            sum->SetParLimits(3*i+0, 0.0, std::max(h1->GetMaximum()*1.2, 1.05*amp));
-                            sum->SetParameter(3*i+0, amp);
-
-                            sum->SetParLimits(3*i+1, mu0 - muWindow, mu0 + muWindow);
-                            sum->SetParameter(3*i+1, mu0);
-
-                            sum->SetParLimits(3*i+2, sig0*0.5, sig0*2.0);
-                            sum->SetParameter(3*i+2, sig0);
-
-                            Double_t lo, hi;
-                            sum->GetParLimits(3*i+2, lo, hi);
-                        }
-                        else {
-                            const auto &p = merged[i];
-
-                            sum->SetParLimits(3*i, 0.0, std::max(h1->GetMaximum()*1.2, p.A*1.05));
-                            sum->SetParameter(3*i, p.A);
-
-                            Double_t dMu = std::max(muWindow, 0.1*std::abs(p.mu));
-                            sum->SetParLimits(3*i+1, p.mu - dMu, p.mu + dMu);
-                            sum->SetParameter(3*i+1, p.mu);
-
-                            sum->SetParLimits(3*i+2, 0.5*p.sigma, 2.0*p.sigma);
-                            sum->SetParameter(3*i+2, p.sigma);
-                        }
-                    }
-                    help->FitHistogramByChi2(h1, sum, x_low, x_high);
-                    h1->Draw("E1");
-                    Double_t yMax1 = 1.25 * h1->GetMaximum();
-                    TLegend* leg = new TLegend(0, 0.10, 0.15, 0.30);
-                    leg->SetBorderSize(0);
-                    leg->SetFillStyle(0);
-                    sum->SetLineColor(kRed); 
-                    sum->SetLineWidth(2); 
-                    sum->SetNpx(500); 
-                    sum->Draw("same");
-
-                    if (!manualPredictPeaks) {
-                        for (const auto &pk : merged) {
-                            Double_t mu = pk.mu;
-                            TLine *l = new TLine(mu, 0, mu, yMax1);
-                            Int_t col  = (pk.id >= 0) ? help->colors[pk.id] : kGray+2;
-                            l->SetLineColor(col);
-                            l->Draw();
-                        }
-                    }
-                    else {
-                        for (Int_t i = 0; i < nG; ++i) {
-                            Double_t mu = means[i];
-                            TLine *l = new TLine(mu, 0, mu, yMax1);
-                            l->SetLineColor(help->colors[i % nParts]);
-                            l->Draw();
-                        }
-                    }
-                    
                     for (Int_t i = 0; i < nG; ++i) {
-                        if (sum->GetParameter(3*i) <= 0) continue;
-                        TF1 *g = new TF1(Form("g_%d_%d", ref, i), "gaus", x_low, x_high);
-                        g->SetParameters(
-                            sum->GetParameter(3*i),
-                            sum->GetParameter(3*i+1),
-                            sum->GetParameter(3*i+2)
-                        );
-                        if (!manualPredictPeaks) {
-                            Int_t col = (merged[i].id >= 0) ? help->colors[merged[i].id] : kGray+2;
-                            g->SetLineColor(col);
-                        } else {
-                            g->SetLineColor(help->colors[i % nParts]);   
-                        }
-                        g->SetLineStyle(2);
-                        g->SetNpx(500);
-                        g->Draw("same");
-
-                        TString label;
-                        if (!manualPredictPeaks) {
-                            auto &ids = merged[i].merged_ids;
-                            std::sort(ids.begin(), ids.end());
-                            ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
-                            if (ids.size()==1) {
-                                label = help->pCodes[ids[0]];
-                            } else {
-                                for (size_t j=0; j<ids.size(); ++j) {
-                                    if (j) label += " + ";
-                                    label += help->pCodes[ids[j]];
-                                }
-                            }
-                        } else {
-                            label = Form("Peak %d", i+1);
-                        }
-                        leg->AddEntry(g, label, "l");
+                        Double_t mu = means[i];
+                        TLine *l = new TLine(mu, 0, mu, yMax1);
+                        l->SetLineColor(help->colors[i % nParts]);
+                        l->Draw();
                     }
-                    TPaveText *pt=new TPaveText(0.02,0.90,0.25,0.99,"NDC");
-                    pt->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
-                    pt->SetFillColorAlpha(0,0); 
-                    pt->Draw("same");
-                    leg->Draw();
-                    c->Print(pdfName);
-                    delete sum; 
-                    delete h1;
-                    delete h2;
-                    delete leg;
                 }
+                    
+                for (Int_t i = 0; i < nG; ++i) {
+                    if (sum->GetParameter(3*i) <= 0) continue;
+                    TF1 *g = new TF1(Form("g_%d_%d", ref, i), "gaus", x_low, x_high);
+                    g->SetParameters(
+                        sum->GetParameter(3*i),
+                        sum->GetParameter(3*i+1),
+                        sum->GetParameter(3*i+2)
+                    );
+                    if (!manualPredictPeaks) {
+                        Int_t col = (merged[i].id >= 0) ? help->colors[merged[i].id] : kGray+2;
+                        g->SetLineColor(col);
+                    } else {
+                        g->SetLineColor(help->colors[i % nParts]);   
+                    }
+                    g->SetLineStyle(2);
+                    g->SetNpx(500);
+                    g->Draw("same");
+
+                    TString label;
+                    if (!manualPredictPeaks) {
+                        auto &ids = merged[i].merged_ids;
+                        std::sort(ids.begin(), ids.end());
+                        ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+                        if (ids.size()==1) {
+                            label = help->pCodes[ids[0]];
+                        } else {
+                            for (size_t j=0; j<ids.size(); ++j) {
+                                if (j) label += " + ";
+                                label += help->pCodes[ids[j]];
+                            }
+                        }
+                } else {
+                    label = Form("Peak %d", i+1);
+                }
+                leg->AddEntry(g, label, "l");
+                }
+                TPaveText *pt=new TPaveText(0.02,0.90,0.25,0.99,"NDC");
+                pt->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
+                pt->SetFillColorAlpha(0,0); 
+                pt->Draw("same");
+                leg->Draw();
+                c->Print(pdfName);
+                delete sum;
+                delete leg;
             }
             c->Print(pdfName+"]"); 
         }

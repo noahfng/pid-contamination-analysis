@@ -23,9 +23,6 @@ class helper{
   const Double_t pMasses[nParts] = {0.51099895, 105.6583755,  139.57039, 493.677, 938.27208816};
   const Double_t pCharges[nParts] = {1, 1, 1, 1, 1};
 
-  //const Double_t resoTPC[nParts] = {0.085, 0.072, 0.074, 0.09, 0.08}; 
-  //const Double_t resoTOF[nParts]   = {0.013, 0.013, 0.013, 0.019, 0.020};
-
   const Double_t resoTPC[nParts][nParts] = {
     {1.000, 0.080, 0.080, 0.085, 0.075},
     {0.090, 1.000, 0.080, 0.090, 0.085},
