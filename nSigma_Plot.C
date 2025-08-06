@@ -369,8 +369,8 @@ void nSigma_Plot(){
                         form << "gaus(" << 3*i << ")+"
                         << "gaus(" << 3*(nG+i) << ")";
                     }
-                    form << "+pol0(" << 3*nG << ")"  // background h1
-                        << "+pol0(" << 3*nG+1 << ")"; // background h2
+                    form << "+pol0(" << 4*nG << ")"  // background h1
+                        << "+pol0(" << 4*nG+1 << ")"; // background h2
 
                     TF1* sum = new TF1("sum", form.str().c_str(), fit_lo, fit_hi);
                     sum->SetNpx(500); 
