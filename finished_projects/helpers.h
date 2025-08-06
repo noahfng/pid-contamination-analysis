@@ -180,7 +180,8 @@ class helper{
     const Int_t offP1 = 4*nG;      // constant background h1
     const Int_t offP2 = 4*nG + 1;  // constant background h2
 
-    auto chi2_fcn = [&](const Double_t* par) {
+    auto chi2_fcn = [&](const Double_t* par0) {
+        std::vector<Double_t> par(par0, par0 + nPar);
         for (Int_t i = 0; i < nPar; ++i) func->SetParameter(i, par[i]);
         auto calc = [&](TH1* h, Int_t offA, Int_t offP) {
             Double_t chi2 = 0; 
