@@ -28,8 +28,8 @@ void nSigma_Plot_ExclComp(){
     const Double_t muWindow = 0.5;
     const Double_t mergeDistanceFactor = 1.0;
     const Double_t nEntriesLimit = 1e7;
-    const Bool_t FitKaonExclComp = false;
-    const Bool_t FitProtonExclComp = true;
+    const Bool_t FitKaonExclComp = true;
+    const Bool_t FitProtonExclComp = false;
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
     const Bool_t PeakZoom = false;
@@ -374,31 +374,37 @@ void nSigma_Plot_ExclComp(){
                     leg1->SetBorderSize(0);
                     leg1->SetFillStyle(0);
                     std::vector<Double_t> par(sum->GetNpar());
-                    for(Int_t i=0; i<sum->GetNpar(); ++i) par[i] = sum->GetParameter(i);
-                    std::vector<Double_t> areas_noK(nG), areas_wK(nG);
+                    std::vector<Double_t> err(sum->GetNpar());
+                    for(Int_t i=0; i<sum->GetNpar(); ++i)  {
+                        par[i] = sum->GetParameter(i);
+                        err[i] = sum->GetParError(i);
+                    }
+                    std::vector<Double_t> areas_noK(nG), areas_wK(nG), err_areas_noK(nG), err_areas_wK(nG);
+                    const Double_t factor = TMath::Sqrt(2*TMath::Pi());
                     for (Int_t ig = 0; ig < nG; ++ig) {
                         Double_t A1   = par[offA1 + ig];
                         Double_t A2   = par[offA2 + ig];
                         Double_t sig  = par[offS  + ig];
-                        areas_noK[ig] = A1  * sig * TMath::Sqrt(2*TMath::Pi());
-                        areas_wK [ig] = A2  * sig * TMath::Sqrt(2*TMath::Pi());
-                    }
+                        Double_t eA1 = err[offA1 + ig];
+                        Double_t eA2 = err[offA2 + ig];
+                        Double_t eS  = err[offS  + ig];
 
-                    double sum01_noK = areas_noK[0] + areas_noK[1];
-                    double sum01_wK  = areas_wK [0] + areas_wK [1];
-                    double sum23_noK = areas_noK[2] + areas_noK[3];
-                    double sum23_wK  = areas_wK [2] + areas_wK [3];
-                    double R01 = (sum01_noK > 0) ? (sum01_noK - sum01_wK) / sum01_noK : 0.0;
+                        areas_noK[ig] = A1  * sig * factor;
+                        areas_wK [ig] = A2  * sig * factor;
 
-                    double R_e = 0.0;
-                    if (nG > 3 && sum23_noK > 0) {
-                        R_e = (sum23_noK - sum23_wK) / sum23_noK;
+                        Double_t dFdA = sig * factor;
+                        Double_t dFdS = A1 * factor;        
+                        Double_t var_noK = dFdA*dFdA * eA1*eA1+ dFdS*dFdS * eS*eS; 
+                        err_areas_noK[ig] = TMath::Sqrt(var_noK);
+
+                        dFdS = A2 * factor;
+                        Double_t var_wK = dFdA*dFdA * eA2*eA2 + dFdS*dFdS * eS*eS;
+                        err_areas_wK[ig] = TMath::Sqrt(var_wK);
                     }
 
                     for(i = 0; i < nG; ++i){
-                        std::cout << Form("Peak-%d-area: %.2f -> %.2f\n", i+1, areas_noK[i], areas_wK[i]);
+                        std::cout << Form("Peak-%d-area: %.2f ± %.2f -> %.2f ± %.2f\n", i+1, areas_noK[i], err_areas_noK[i], areas_wK[i], err_areas_wK[i]);
                     }
-                    std::cout << Form("summed e-Peak-Reduction = %.2f %%\n", R_e   * 100);
                     const Int_t nPoints = 500; 
                     Double_t xlo = fit_lo, xhi = fit_hi;
                     Double_t dx  = (xhi - xlo)/(nPoints-1);

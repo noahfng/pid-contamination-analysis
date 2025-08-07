@@ -163,6 +163,9 @@ class helper{
         ++usedBins;
     }
     Int_t ndf = usedBins - nPar;
+    for (Int_t i = 0; i < nPar; ++i) {
+    func->SetParError(i, TMath::Sqrt(minimizer->CovMatrix(i, i)));
+    }
     func->SetChisquare(chi2);
     func->SetNDF(ndf);
 }
@@ -240,6 +243,9 @@ class helper{
     countBins(h1); 
     countBins(h2);
     Int_t ndf = usedBins - nPar;
+    for (Int_t i = 0; i < nPar; ++i) {
+    func->SetParError(i, TMath::Sqrt(minimizer->CovMatrix(i, i)));
+    }
     func->SetChisquare(chi2);
     func->SetNDF(ndf);
 }
