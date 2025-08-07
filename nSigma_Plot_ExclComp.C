@@ -28,6 +28,7 @@ void nSigma_Plot_ExclComp(){
     const Double_t muWindow = 0.5;
     const Double_t mergeDistanceFactor = 1.0;
     const Double_t nEntriesLimit = 1e7;
+    const Double_t sigmaExcl = 4.0;
     const Bool_t FitKaonExclComp = true;
     const Bool_t FitProtonExclComp = false;
     const Bool_t plotTPC = true;
@@ -118,7 +119,7 @@ void nSigma_Plot_ExclComp(){
 
                         h_no[pid][bin]->Fill(val);
 
-                        if (TMath::IsNaN(tofNS[excl][t]) || TMath::Abs(tofNS[excl][t])>=3) h_w[pid][bin]->Fill(val);
+                        if (TMath::IsNaN(tofNS[excl][t]) || TMath::Abs(tofNS[excl][t])>=sigmaExcl) h_w[pid][bin]->Fill(val);
                     }
                 }
             }
@@ -262,35 +263,39 @@ void nSigma_Plot_ExclComp(){
                     Int_t manualNGauss = 0;
                     std::vector<Double_t> manualMeans, manualSigmas, manualAmps;
                     if (manualPredictPeaks) {
-                        c->cd();
-                        c->Clear();
-                        h1->Draw("E1");
-                        c->Modified();
-                        c->Update();
-                        c->RaiseWindow();
-                        gSystem->ProcessEvents();
-                        std::cout << "How many Gaussians? ";
-                        std::cin >> manualNGauss;
-                        if (manualNGauss > 0) {
-                            manualMeans.resize(manualNGauss);
-                            std::cout << "Enter " << manualNGauss << " mean positions (space-separated): ";
-                            for (Int_t i = 0; i < manualNGauss; ++i) {
-                                std::cin >> manualMeans[i];
-                            }
-                            manualSigmas.resize(manualNGauss);
-                            std::cout << "Enter " << manualNGauss << " sigma (width) guesses for each peak (space-separated): ";
-                            for (Int_t i = 0; i < manualNGauss; ++i){
-                                std::cin >> manualSigmas[i];
-                            }
-                            manualAmps.resize(manualNGauss);
-                            std::cout << "Enter " << manualNGauss << " amplitude guesses for each peak (space-separated): ";
-                            for (Int_t i = 0; i < manualNGauss; ++i){
-                                std::cin >> manualAmps[i];
-                            }
-                        } else {
-                            std::cerr << "Invalid number of Gaussians; falling back to automatic mode." << std::endl;
-                            manualNGauss = 0;
-                        }
+                        manualNGauss = 4;
+                        manualMeans = {-6, -5, 0, 1.5};
+                        manualSigmas = {1, 1, 1, 1};
+                        manualAmps = {1e4, 1e4, 1e2, 1e1};
+                        //c->cd();
+                        //c->Clear();
+                        //h1->Draw("E1");
+                        //c->Modified();
+                        //c->Update();
+                        //c->RaiseWindow();
+                        //gSystem->ProcessEvents();
+                        //std::cout << "How many Gaussians? ";
+                        //std::cin >> manualNGauss;
+                        //if (manualNGauss > 0) {
+                        //    manualMeans.resize(manualNGauss);
+                        //    std::cout << "Enter " << manualNGauss << " mean positions (space-separated): ";
+                        //    for (Int_t i = 0; i < manualNGauss; ++i) {
+                        //        std::cin >> manualMeans[i];
+                        //    }
+                        //    manualSigmas.resize(manualNGauss);
+                        //    std::cout << "Enter " << manualNGauss << " sigma (width) guesses for each peak (space-separated): ";
+                        //    for (Int_t i = 0; i < manualNGauss; ++i){
+                        //        std::cin >> manualSigmas[i];
+                        //    }
+                        //    manualAmps.resize(manualNGauss);
+                        //    std::cout << "Enter " << manualNGauss << " amplitude guesses for each peak (space-separated): ";
+                        //    for (Int_t i = 0; i < manualNGauss; ++i){
+                        //        std::cin >> manualAmps[i];
+                        //    }
+                        //} else {
+                        //    std::cerr << "Invalid number of Gaussians; falling back to automatic mode." << std::endl;
+                        //    manualNGauss = 0;
+                        //}
                     }
 
                     size_t nG;
@@ -403,8 +408,9 @@ void nSigma_Plot_ExclComp(){
                     }
 
                     for(i = 0; i < nG; ++i){
-                        std::cout << Form("Peak-%d-area: %.2f ± %.2f -> %.2f ± %.2f\n", i+1, areas_noK[i], err_areas_noK[i], areas_wK[i], err_areas_wK[i]);
+                       std::cout << Form("Peak-%d-area: %.2f ± %.2f -> %.2f ± %.2f\n", i+1, areas_noK[i], err_areas_noK[i], areas_wK[i], err_areas_wK[i]);
                     }
+                    std::cout << sum->GetChisquare()/sum->GetNDF() << std::endl;
                     const Int_t nPoints = 500; 
                     Double_t xlo = fit_lo, xhi = fit_hi;
                     Double_t dx  = (xhi - xlo)/(nPoints-1);
@@ -426,6 +432,9 @@ void nSigma_Plot_ExclComp(){
                         y1[ip] = yy1;
                         y2[ip] = yy2;
                     }
+
+                    //std::cout << "Mean: " << par[offM + 2] << ", Sigma: " << par[offS + 2] << ", Amp1: " << par[offA1 + 2] << ", Amp2: "<< par[offA2 + 2] << std::endl;
+
                     auto gSum1 = new TGraph(nPoints, xv.data(), y1.data());
                     gSum1->SetLineColor(kRed);
                     gSum1->SetLineWidth(2);

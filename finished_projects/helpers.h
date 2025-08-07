@@ -164,7 +164,7 @@ class helper{
     }
     Int_t ndf = usedBins - nPar;
     for (Int_t i = 0; i < nPar; ++i) {
-    func->SetParError(i, TMath::Sqrt(minimizer->CovMatrix(i, i)));
+        func->SetParError(i, TMath::Sqrt(minimizer->CovMatrix(i, i)));
     }
     func->SetChisquare(chi2);
     func->SetNDF(ndf);
@@ -182,6 +182,11 @@ class helper{
 
     auto chi2_fcn = [&](const Double_t* par0) {
         std::vector<Double_t> par(par0, par0 + nPar);
+        //par[offM + 2] = -0.272804;
+        //par[offS + 2] = 1.08;
+        //par[offA1 + 2] = 77.9813;
+        //par[offA2 + 2] = par[offA1 + 2];
+        //par[offA2 + 3] = 0;
         for (Int_t i = 0; i < nPar; ++i) func->SetParameter(i, par[i]);
         auto calc = [&](TH1* h, Int_t offA, Int_t offP) {
             Double_t chi2 = 0; 
@@ -242,10 +247,12 @@ class helper{
     };
     countBins(h1); 
     countBins(h2);
-    Int_t ndf = usedBins - nPar;
+    Double_t low = 0;
+    Double_t high = 0;
     for (Int_t i = 0; i < nPar; ++i) {
-    func->SetParError(i, TMath::Sqrt(minimizer->CovMatrix(i, i)));
+        func->SetParError(i, TMath::Sqrt(minimizer->CovMatrix(i, i)));
     }
+    Int_t ndf = usedBins - nPar;
     func->SetChisquare(chi2);
     func->SetNDF(ndf);
 }
