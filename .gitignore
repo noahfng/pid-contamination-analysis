@@ -1,7 +1,6 @@
-# Ignore entire data folder
+
 /UD_LHC23_pass4_SingleGap/
 
-# Ignore all PDFs (if you regenerate them)
 /*.pdf
 
 finished_projects/Plots_with_complete_data/
@@ -9,3 +8,5 @@ finished_projects/Plots_with_complete_data/
 /.vscode
 
 /*.txt
+
+/useless_stuff/
