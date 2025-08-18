@@ -5,7 +5,6 @@
 #include "TString.h"
 #include "TH1.h"
 #include "TF1.h"
-#include "TMath.h"
 #include "Math/Minimizer.h"
 #include "Math/Factory.h"
 #include "Math/Functor.h"
