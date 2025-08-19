@@ -1,3 +1,4 @@
+#pragma once
 #include "TMath.h"
 #include "TFile.h"
 #include "TGraph.h"

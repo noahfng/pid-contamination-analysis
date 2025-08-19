@@ -16,54 +16,11 @@
 #include "TLine.h"
 #include "TPaveText.h"
 #include "TSystem.h"
+#include "TH1D.h"
 
 #include <AddTrees.h>
 #include <helpers.h>
-
-static inline Double_t GaussIntegral(Double_t A, Double_t mu, Double_t sig,
-                                     Double_t a, Double_t b)
-{
-    const Double_t invsqrt2 = 1.0 / TMath::Sqrt(2.0);
-    const Double_t t1 = (b - mu) * invsqrt2 / sig;
-    const Double_t t0 = (a - mu) * invsqrt2 / sig;
-    return A * sig * TMath::Sqrt(TMath::Pi()/2.0) * (TMath::Erf(t1) - TMath::Erf(t0));
-}
-
-static inline Double_t ModelIntegral(Int_t whichHist, Double_t a, Double_t b,
-    const std::vector<Double_t>& par,
-    Int_t nG, Int_t offA1, Int_t offA2, Int_t offM, Int_t offS, Int_t offP1, Int_t offP2)
-{
-    Double_t m = 0.0;
-    const Int_t offA = (whichHist==0 ? offA1 : offA2);
-    const Int_t offP = (whichHist==0 ? offP1 : offP2);
-    m += par[offP] * (b - a); 
-    for (Int_t ig=0; ig<nG; ++ig) {
-        const Double_t A   = par[offA + ig];
-        const Double_t mu  = par[offM + ig];
-        const Double_t sig = par[offS + ig];
-        m += GaussIntegral(A, mu, sig, a, b);
-    }
-    return std::max(m, 1e-12);
-}
-
-static inline std::pair<Double_t,Double_t> PoissonDeviance(
-    TH1F* h, Int_t whichHist, const std::vector<Double_t>& par,
-    Int_t nG, Int_t offA1, Int_t offA2, Int_t offM, Int_t offS, Int_t offP1, Int_t offP2)
-{
-    Double_t D = 0.0, N = 0.0;
-    const Int_t nb = h->GetNbinsX();
-    for (Int_t ib=1; ib<=nb; ++ib) {
-        const Double_t n  = h->GetBinContent(ib);
-        const Double_t a  = h->GetBinLowEdge(ib);
-        const Double_t b  = h->GetBinLowEdge(ib+1);
-        const Double_t mu = ModelIntegral(whichHist, a, b, par, nG, offA1, offA2, offM, offS, offP1, offP2);
-        N += n;
-        if (n > 0.0) D += 2.0 * (mu - n + n * std::log(n/mu));
-        else         D += 2.0 * mu;
-    }
-    return {D, N};
-}
-
+#include <covarianceMatrix.h>
 
 struct ndJsonLogger {
     std::ofstream f;
@@ -198,13 +155,14 @@ void nSigma_Plot_ExclComp(){
     const Int_t nParts = helper::nParts;
     const Int_t NtrkMax = help->NtrkMax;
     const Int_t   nBins   = 500;
-    const Double_t xMin   = -10.0, xMax = 3.0;
-    const Double_t pStart = 1.35, pEnd = 1.45, step = 0.1;
+    const Double_t xMin   = -10.0, xMax = 10.0;
+    const Double_t pStart = 0.45, pEnd = 0.55, step = 0.1;
     const Double_t muWindow = 0.5;
     const Double_t mergeDistanceFactor = 1.0;
     const Double_t nEntriesLimit = 1e7;
-    const Bool_t FitKaonExclComp = false;
-    const Bool_t FitProtonExclComp = true;
+    const Double_t eigenThr = 1e-4; 
+    const Bool_t FitKaonExclComp = true;
+    const Bool_t FitProtonExclComp = false;
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
     const Bool_t PeakZoom = false;
@@ -214,9 +172,7 @@ void nSigma_Plot_ExclComp(){
     const std::vector<Double_t> sigmaExclList = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
     ndJsonLogger ndlog;
     ndlog.open(Form("nSigmaEl-Plot-Data-%.2f<p%.2f.ndjson", pStart, pEnd));
-    ndlog.write_config(nBins, xMin, xMax, pStart, pEnd, step,
-                    muWindow, mergeDistanceFactor, nEntriesLimit,
-                    FitKaonExclComp, FitProtonExclComp, plotTPC, plotTOF, PeakZoom, manualPredictPeaks);
+    ndlog.write_config(nBins, xMin, xMax, pStart, pEnd, step, muWindow, mergeDistanceFactor, nEntriesLimit, FitKaonExclComp, FitProtonExclComp, plotTPC, plotTOF, PeakZoom, manualPredictPeaks);
 
     gROOT->SetBatch(!manualPredictPeaks);
     gStyle->SetOptStat(1);
@@ -263,6 +219,11 @@ void nSigma_Plot_ExclComp(){
             const Char_t* name = (excl==KaonExcl ? "KaonExcl" : "ProtonExcl");
             std::vector<std::vector<TH1F*>> h_no(nParts, std::vector<TH1F*>(nSteps,nullptr));
             std::vector<std::vector<TH1F*>> h_w(nParts, std::vector<TH1F*>(nSteps,nullptr));
+
+            std::vector<std::vector<TH1D*>> hcm_no(nParts, std::vector<TH1D*>(nSteps,nullptr));
+            std::vector<std::vector<TH1D*>> hcm_w (nParts, std::vector<TH1D*>(nSteps,nullptr));
+            std::vector<std::vector<covarianceMatrix*>> cmObj(nParts, std::vector<covarianceMatrix*>(nSteps,nullptr));
+
         
             for (Int_t pid=0; pid<nParts; ++pid) if (doPid[pid]) {
                 for (Int_t i=0; i<nSteps; ++i) {
@@ -280,6 +241,19 @@ void nSigma_Plot_ExclComp(){
                     h_w[pid][i]->SetMarkerSize(0.75);
                     h_w[pid][i]->SetMarkerColor(kBlack);
                     h_w[pid][i]->SetLineColor(kBlack);
+
+                    
+                    auto name_cm_no = Form("cm_nSTPC_%s_%g_%g_no%s", help->pCodes[pid], pEdges[i], pEdges[i+1], name);
+                    auto name_cm_w  = Form("cm_nSTPC_%s_%g_%g_%s%.2f", help->pCodes[pid], pEdges[i], pEdges[i+1], name, sigmaExcl);
+
+                    hcm_no[pid][i] = new TH1D(name_cm_no, h_no[pid][i]->GetTitle(), nBins, xMin, xMax);
+                    hcm_w [pid][i] = new TH1D(name_cm_w , h_w [pid][i]->GetTitle(), nBins, xMin, xMax);
+
+                    std::vector<TH1D*> cmHists{ hcm_no[pid][i], hcm_w[pid][i] };
+                    std::vector<std::tuple<Double_t, Double_t>*> fitlims;
+                    fitlims.push_back(new std::tuple<Double_t,Double_t>(xMin, xMax));   
+                    fitlims.push_back(new std::tuple<Double_t,Double_t>(xMin, xMax)); 
+                    cmObj[pid][i] = new covarianceMatrix(cmHists, fitlims);
                 }
             }       
 
@@ -299,9 +273,31 @@ void nSigma_Plot_ExclComp(){
                         h_no[pid][bin]->Fill(val);
 
                         if (TMath::IsNaN(tofNS[excl][t]) || TMath::Abs(tofNS[excl][t])>=sigmaExcl) h_w[pid][bin]->Fill(val);
+
+                        auto nsVals = new std::vector<Double_t>(); 
+                        nsVals->reserve(2);
+                        auto toadd  = new std::vector<Bool_t>();   
+                        toadd->reserve(2);
+
+                        nsVals->clear(); 
+                        toadd->clear();
+                        nsVals->push_back(val);  
+                        toadd->push_back(true);
+                        const Bool_t passExcl = (TMath::IsNaN(tofNS[excl][t]) || TMath::Abs(tofNS[excl][t]) >= sigmaExcl);
+                        if (passExcl) {
+                            nsVals->push_back(val); 
+                            toadd->push_back(true);
+                        }
+                        else{
+                            nsVals->push_back(-999.0); 
+                            toadd->push_back(false);
+                        }
+
+                        cmObj[pid][bin]->addEvent(nsVals, toadd);
                     }
                 }
             }
+            
         
             for (Int_t ref = 0; ref < nParts; ++ref) {
                 if (!doPid[ref]) continue;
@@ -310,7 +306,21 @@ void nSigma_Plot_ExclComp(){
                 c->SetLeftMargin(0.15);
                 c->SetLogy();
                 c->Print(pdfName + "[");
+
+                TString cmPdf = Form("CM_%s_%s_%s-%.2f.pdf",suffix.Data(), help->pCodes[ref], name, sigmaExcl);
+                TCanvas* cCM = new TCanvas(Form("cCM_%s_%s", suffix.Data(), help->pCodes[ref]), "", 800, 700);
+                cCM->SetLeftMargin(0.15);
+                cCM->SetRightMargin(0.15);
+                cCM->Print(cmPdf + "[");
                 for (Int_t i = 0; i < nSteps; ++i) {
+                    auto cm = cmObj[ref][i];
+                    const Bool_t useOffDiag = kTRUE;
+                    cm->make(useOffDiag, eigenThr);
+                    cCM->cd();
+                    cCM->Clear();
+                    cm->plot(cCM, cmPdf);
+                    c->cd();
+
                     TH1F* h1 = nullptr;
                     TH1F* h2 = nullptr;
                     h1 = h_no[ref][i];
@@ -546,7 +556,7 @@ void nSigma_Plot_ExclComp(){
                             sum->SetParameter(offS + i, p.sigma);
                         }
                     }
-                    help->FitHistogramsByChi2(h1, h2, sum, nG, fit_lo, fit_hi);
+                    help->FitHistogramsByChi2(h1, h2, sum, nG, fit_lo, fit_hi, cmObj[ref][i], std::vector<TH1D*>{hcm_no[ref][i], hcm_w[ref][i]}, eigenThr, nBins);
                     c->Clear();
                     h1->Draw("E1");
                     Double_t yMax1 = 1.25 * h1->GetMaximum();
@@ -558,7 +568,7 @@ void nSigma_Plot_ExclComp(){
                     for(Int_t i=0; i<sum->GetNpar(); ++i)  {
                         par[i] = sum->GetParameter(i);
                         err[i] = sum->GetParError(i);
-                    }
+                    }                    
 
                     struct BandStats {
                         Double_t kLeft, kRight;
@@ -568,8 +578,8 @@ void nSigma_Plot_ExclComp(){
 
                     auto computeBandFractions = [&](Int_t whichHist) -> BandStats {
                         const Int_t offA = (whichHist==0 ? offA1 : offA2);
-                        const Double_t kLeft = 1.0;
-                        const Double_t kRight = 4.0;
+                        const Double_t kLeft = 3.0;
+                        const Double_t kRight = 3.0;
 
                         std::vector<std::vector<Double_t>> frac(nG, std::vector<Double_t>(nG, std::numeric_limits<Double_t>::quiet_NaN()));
                         std::vector<Double_t> totCont(nG, std::numeric_limits<Double_t>::quiet_NaN());
@@ -600,13 +610,13 @@ void nSigma_Plot_ExclComp(){
                             const Double_t a = mui - kLeft;
                             const Double_t b = mui + kRight;
 
-                            const Double_t are_i = GaussIntegral(Ai, mui, sigi, a, b);
+                            const Double_t are_i = help->GaussIntegral(Ai, mui, sigi, a, b);
 
                             for (Int_t j = 0; j < nG; ++j) {
                                 const Double_t Aj   = par[offA + j];
                                 const Double_t muj  = par[offM + j];
                                 const Double_t sigj = par[offS + j];
-                                const Double_t num_j = GaussIntegral(Aj, muj, sigj, a, b);
+                                const Double_t num_j = help->GaussIntegral(Aj, muj, sigj, a, b);
                                 frac[ii][j] = (are_i > 0.0) ? (num_j / are_i) : std::numeric_limits<Double_t>::quiet_NaN();
                             }
 
@@ -619,8 +629,8 @@ void nSigma_Plot_ExclComp(){
                         return BandStats{kLeft, kRight, std::move(frac), std::move(totCont)};
                     };
 
-                    auto [D1,N1] = PoissonDeviance(h1, 0, par, nG, offA1, offA2, offM, offS, offP1, offP2);
-                    auto [D2,N2] = PoissonDeviance(h2, 1, par, nG, offA1, offA2, offM, offS, offP1, offP2);
+                    auto [D1,N1] = help->PoissonDeviance(h1, 0, par, nG, offA1, offA2, offM, offS, offP1, offP2);
+                    auto [D2,N2] = help->PoissonDeviance(h2, 1, par, nG, offA1, offA2, offM, offS, offP1, offP2);
                     const Double_t D  = D1 + D2;
                     const Double_t N  = N1 + N2;
                     const Int_t    k  = 4*nG + 2; 
@@ -842,6 +852,7 @@ void nSigma_Plot_ExclComp(){
                     delete sum;
                 }    
             c->Print(pdfName+"]"); 
+            cCM->Print(cmPdf + "]");
             }
         }
     };
