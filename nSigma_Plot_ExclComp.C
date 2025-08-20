@@ -35,7 +35,7 @@ struct ndJsonLogger {
                       Double_t pStart, Double_t pEnd, Double_t step,
                       Double_t muWindow, Double_t mergeDistanceFactor,
                       Double_t nEntriesLimit, Bool_t FitKaonExclComp,
-                      Bool_t FitProtonExclComp, Bool_t plotTPC, Bool_t plotTOF, Bool_t PeakZoom, Bool_t manualPredictPeaks)
+                      Bool_t FitProtonExclComp, Bool_t plotTPC, Bool_t plotTOF, Bool_t PeakZoom, Bool_t manualPredictPeaks, Double_t eigenThr, Bool_t useOffDiag)
     {
         f << "{\n"
           << "\"type\":\"config\",\n"
@@ -53,8 +53,10 @@ struct ndJsonLogger {
           << "\"plotTPC\":" << (plotTPC?"true":"false") << ",\n"
           << "\"plotTOF\":" << (plotTOF?"true":"false") << ",\n"
           << "\"PeakZoom\":" << (PeakZoom?"true":"false") << ",\n"
-          << "\"manualPredictPeaks\":" << (manualPredictPeaks?"true":"false")
-          << "\n}\n";
+          << "\"manualPredictPeaks\":" << (manualPredictPeaks?"true":"false")<< ",\n" 
+          << "\"eigenThr\":" << eigenThr << ",\n"                
+          << "\"useOffDiag\":" << (useOffDiag?"true":"false")
+          << "\n}\n\n";
     }
 
     static void dump_vec(std::ostream& os, const std::vector<Double_t>& v) {
@@ -91,8 +93,8 @@ struct ndJsonLogger {
         os << "]";
     }
 
-    void write_slice(const Char_t* mode,        
-                     const Char_t* tag,         
+    void write_slice(const Char_t* mode,
+                     const Char_t* tag,
                      Double_t sigmaExcl,
                      const Char_t* refCode,
                      Int_t slice,
@@ -106,12 +108,22 @@ struct ndJsonLogger {
                      const std::vector<Double_t>& err_wExcl,
                      Double_t D_over_N, Double_t chi2_over_ndf,
                      Bool_t manualPredictPeaks,
-                     const std::vector<Double_t>& manualMeans,
-                     const std::vector<Double_t>& manualSigmas,
-                     const std::vector<Double_t>& manualAmps)
+                     const std::vector<Double_t>& seedMeans,
+                     const std::vector<Double_t>& seedSigmas,
+                     const std::vector<Double_t>& seedAmps,
+                     const std::vector<Double_t>& fitMeans,
+                     const std::vector<Double_t>& fitSigmas,
+                     const std::vector<Double_t>& fitAmps_noExcl,
+                     const std::vector<Double_t>& fitAmps_wExcl,
+                     const std::vector<Double_t>& err_fitMeans,
+                     const std::vector<Double_t>& err_fitSigmas,
+                     const std::vector<Double_t>& err_fitAmps_noExcl,
+                     const std::vector<Double_t>& err_fitAmps_wExcl,
+                     Double_t bg_noExcl, Double_t bg_wExcl,
+                     Double_t err_bg_noExcl, Double_t err_bg_wExcl)
     {
         f << "{\n"
-          << "\"tag\":\"" << tag << "\","
+          << "\"tag\":\"" << tag << "\",\n"
           << "\"sigmaExcl\":" << sigmaExcl << ",\n"
           << "\"ref\":\"" << refCode << "\",\n"
           << "\"slice\":" << slice << ",\n"
@@ -138,15 +150,25 @@ struct ndJsonLogger {
           << "\n},\n";
 
         f << "\"peak_seeding\":{\n";
-        f << "\"mode\":\"" << (manualPredictPeaks ? "manual" : "auto") << ",\"";
-        if (manualPredictPeaks) {
-            f << "\"means\":";  dump_vec(f, manualMeans);  f << ",\n"
-              << "\"sigmas\":"; dump_vec(f, manualSigmas); f << ",\n"
-              << "\"amps\":";   dump_vec(f, manualAmps);
-        }
-        f << "\n}\n";
+        f << "\"mode\":\"" << (manualPredictPeaks ? "manual" : "auto") << "\",\n";
+        f << "\"seedMeans\":";  dump_vec(f, seedMeans);  f << ",\n";
+        f << "\"seedSigmas\":"; dump_vec(f, seedSigmas); f << ",\n";
+        f << "\"seedAmps\":";   dump_vec(f, seedAmps); f << "\n";
+        f << "},\n";
 
+        f << "\"fit_params\":{\n";
+        f << "\"means\":"; dump_vec(f, fitMeans); f << ",\n";
+        f << "\"means_err\":";  dump_vec(f, err_fitMeans); f << ",\n";
+        f << "\"sigmas\":"; dump_vec(f, fitSigmas); f << ",\n";
+        f << "\"sigmas_err\":"; dump_vec(f, err_fitSigmas); f << ",\n";
+        f << "\"amps_noExcl\":"; dump_vec(f, fitAmps_noExcl); f << ",\n";
+        f << "\"amps_err_noExcl\":"; dump_vec(f, err_fitAmps_noExcl); f << ",\n";
+        f << "\"amps_wExcl\":";  dump_vec(f, fitAmps_wExcl);  f << ",\n";
+        f << "\"amps_err_wExcl\":";  dump_vec(f, err_fitAmps_wExcl);  f << ",\n";
+        f << "\"bg_noExcl\":" << bg_noExcl << ", \"bg_wExcl\":" << bg_wExcl << ",\n";
+        f << "\"bg_err_noExcl\":" << err_bg_noExcl << ", \"bg_err_wExcl\":" << err_bg_wExcl << "\n";
         f << "}\n";
+        f << "}\n\n";
     }
 };
 
@@ -159,20 +181,22 @@ void nSigma_Plot_ExclComp(){
     const Double_t pStart = 0.45, pEnd = 0.55, step = 0.1;
     const Double_t muWindow = 0.5;
     const Double_t mergeDistanceFactor = 1.0;
-    const Double_t nEntriesLimit = 1e7;
-    const Double_t eigenThr = 1e-4; 
+    const Double_t nEntriesLimit = 1e7; 
     const Bool_t FitKaonExclComp = true;
     const Bool_t FitProtonExclComp = false;
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
     const Bool_t PeakZoom = false;
     const Bool_t manualPredictPeaks = true;
+    const Double_t eigenThr = 1e-4;
+    const Bool_t useOffDiag = kTRUE;
+    const Bool_t plotCM = true;
     const std::array<Bool_t, nParts> doPid = {{true, false, false, false, false}};
     using PeakPars = std::array<Double_t,4>;
     const std::vector<Double_t> sigmaExclList = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
     ndJsonLogger ndlog;
     ndlog.open(Form("nSigmaEl-Plot-Data-%.2f<p%.2f.ndjson", pStart, pEnd));
-    ndlog.write_config(nBins, xMin, xMax, pStart, pEnd, step, muWindow, mergeDistanceFactor, nEntriesLimit, FitKaonExclComp, FitProtonExclComp, plotTPC, plotTOF, PeakZoom, manualPredictPeaks);
+    ndlog.write_config(nBins, xMin, xMax, pStart, pEnd, step, muWindow, mergeDistanceFactor, nEntriesLimit, FitKaonExclComp, FitProtonExclComp, plotTPC, plotTOF, PeakZoom, manualPredictPeaks, eigenThr, useOffDiag);
 
     gROOT->SetBatch(!manualPredictPeaks);
     gStyle->SetOptStat(1);
@@ -223,7 +247,6 @@ void nSigma_Plot_ExclComp(){
             std::vector<std::vector<TH1D*>> hcm_no(nParts, std::vector<TH1D*>(nSteps,nullptr));
             std::vector<std::vector<TH1D*>> hcm_w (nParts, std::vector<TH1D*>(nSteps,nullptr));
             std::vector<std::vector<covarianceMatrix*>> cmObj(nParts, std::vector<covarianceMatrix*>(nSteps,nullptr));
-
         
             for (Int_t pid=0; pid<nParts; ++pid) if (doPid[pid]) {
                 for (Int_t i=0; i<nSteps; ++i) {
@@ -307,19 +330,27 @@ void nSigma_Plot_ExclComp(){
                 c->SetLogy();
                 c->Print(pdfName + "[");
 
-                TString cmPdf = Form("CM_%s_%s_%s-%.2f.pdf",suffix.Data(), help->pCodes[ref], name, sigmaExcl);
-                TCanvas* cCM = new TCanvas(Form("cCM_%s_%s", suffix.Data(), help->pCodes[ref]), "", 800, 700);
-                cCM->SetLeftMargin(0.15);
-                cCM->SetRightMargin(0.15);
-                cCM->Print(cmPdf + "[");
+                TString  cmPdf;
+                TCanvas* cCM = nullptr;
+                if (plotCM) {
+                    cmPdf = Form("CM_%s_%s_%s-%.2f.pdf",suffix.Data(), help->pCodes[ref], name, sigmaExcl);
+                    cCM = new TCanvas(Form("cCM_%s_%s", suffix.Data(), help->pCodes[ref]), "", 800, 700);
+                    cCM->SetLeftMargin(0.15);
+                    cCM->SetRightMargin(0.15);
+                    cCM->Print(cmPdf + "[");
+                }
+
                 for (Int_t i = 0; i < nSteps; ++i) {
                     auto cm = cmObj[ref][i];
-                    const Bool_t useOffDiag = kTRUE;
                     cm->make(useOffDiag, eigenThr);
-                    cCM->cd();
-                    cCM->Clear();
-                    cm->plot(cCM, cmPdf);
-                    c->cd();
+                    if (plotCM) {
+                        gROOT->SetBatch(kFALSE);
+                        cCM->cd();
+                        cCM->Clear();
+                        cm->plot(cCM, cmPdf);
+                        gROOT->SetBatch(!manualPredictPeaks);
+                        c->cd();
+                    }
 
                     TH1F* h1 = nullptr;
                     TH1F* h2 = nullptr;
@@ -484,14 +515,22 @@ void nSigma_Plot_ExclComp(){
                     }
 
                     size_t nG;
-                    std::vector<Double_t> means;
+                    std::vector<Double_t> seedMeans, seedSigmas, seedAmps;
                     if (manualPredictPeaks && manualNGauss > 0) {
                         nG = manualNGauss;
-                        means = manualMeans;
+                        seedMeans  = manualMeans;
+                        seedSigmas = manualSigmas;
+                        seedAmps   = manualAmps;
                     } else {
                         nG = merged.size();
-                        means.reserve(nG);
-                        for (auto &pk : merged) means.push_back(pk.mu);
+                        seedMeans.resize(merged.size());
+                        seedSigmas.resize(merged.size());
+                        seedAmps.resize(merged.size());
+                        for (size_t i = 0; i < merged.size(); ++i) {
+                            seedMeans[i]  = merged[i].mu;
+                            seedSigmas[i] = merged[i].sigma;
+                            seedAmps[i]   = merged[i].A;   
+                        }
                     }
                     if (nG < 1) { c->Print(pdfName); delete h1; continue; }
                     
@@ -521,9 +560,9 @@ void nSigma_Plot_ExclComp(){
                     sum->SetParameter(offP2, 1.0);
                     for (size_t i = 0; i < nG; ++i) {
                         if (manualPredictPeaks && manualNGauss > 0) {
-                            Double_t mu0 = means[i];
-                            Double_t sig0 = manualSigmas[i]; 
-                            Double_t amp = manualAmps[i]; 
+                            Double_t mu0 = seedMeans[i];
+                            Double_t sig0 = seedSigmas[i]; 
+                            Double_t amp = seedAmps[i]; 
 
                             sum->SetParLimits(offA1 + i, 0.0, std::max(h1->GetMaximum()*1.2, 1.05*amp));
                             sum->SetParameter(offA1 + i, amp);
@@ -664,9 +703,30 @@ void nSigma_Plot_ExclComp(){
                     const Double_t D_over_N      = (N   > 0 ? D   / N   : std::numeric_limits<Double_t>::quiet_NaN());
                     const Double_t chi2_over_ndf = (ndf > 0 ? chi2/ ndf : std::numeric_limits<Double_t>::quiet_NaN());
 
+                    std::vector<Double_t> fitMeans(nG), fitSigmas(nG);
+                    std::vector<Double_t> fitAmps_noExcl(nG), fitAmps_wExcl(nG);
+                    std::vector<Double_t> e_fitMeans(nG), e_fitSigmas(nG);
+                    std::vector<Double_t> e_fitAmps_noExcl(nG), e_fitAmps_wExcl(nG);
+
+                    for (int ig=0; ig<nG; ++ig) {
+                        fitAmps_noExcl[ig] = par[offA1 + ig];
+                        fitAmps_wExcl[ig]  = par[offA2 + ig];
+                        fitMeans[ig]       = par[offM  + ig];
+                        fitSigmas[ig]      = par[offS  + ig];
+
+                        e_fitAmps_noExcl[ig] = err[offA1 + ig];
+                        e_fitAmps_wExcl[ig]  = err[offA2 + ig];
+                        e_fitMeans[ig]       = err[offM  + ig];
+                        e_fitSigmas[ig]      = err[offS  + ig];
+                    }
+                    const Double_t bkg_noExcl   = par[offP1];   
+                    const Double_t bkg_wExcl    = par[offP2];
+                    const Double_t ebkg_noExcl  = err[offP1];
+                    const Double_t ebkg_wExcl   = err[offP2];
 
                     auto band_no = computeBandFractions(0); 
                     auto band_w  = computeBandFractions(1); 
+
                     ndlog.write_slice(
                         suffix.Data(), "noExcl", sigmaExcl, help->pCodes[ref],
                         i, pEdges[i], pEdges[i+1],
@@ -674,8 +734,9 @@ void nSigma_Plot_ExclComp(){
                         areas_noK, err_areas_noK,  
                         areas_wK,  err_areas_wK,  
                         D_over_N, chi2_over_ndf,
-                        manualPredictPeaks, manualMeans, manualSigmas, manualAmps
-                    );
+                        manualPredictPeaks, seedMeans, seedSigmas, seedAmps,
+                        fitMeans, fitSigmas, fitAmps_noExcl, fitAmps_wExcl, e_fitMeans, e_fitSigmas, e_fitAmps_noExcl, e_fitAmps_wExcl,
+                        bkg_noExcl, bkg_wExcl, ebkg_noExcl, ebkg_wExcl);
 
                     ndlog.write_slice(
                         suffix.Data(), "wExcl", sigmaExcl, help->pCodes[ref],
@@ -684,8 +745,10 @@ void nSigma_Plot_ExclComp(){
                         areas_noK, err_areas_noK,
                         areas_wK,  err_areas_wK,
                         D_over_N, chi2_over_ndf,
-                        manualPredictPeaks, manualMeans, manualSigmas, manualAmps
-                    );
+                        manualPredictPeaks, seedMeans, seedSigmas, seedAmps,
+                        fitMeans, fitSigmas, fitAmps_noExcl, fitAmps_wExcl, e_fitMeans, e_fitSigmas, e_fitAmps_noExcl, e_fitAmps_wExcl,
+                        bkg_noExcl, bkg_wExcl, ebkg_noExcl, ebkg_wExcl);
+
                     const Int_t nPoints = 500; 
                     Double_t xlo = fit_lo, xhi = fit_hi;
                     Double_t dx  = (xhi - xlo)/(nPoints-1);
@@ -728,7 +791,7 @@ void nSigma_Plot_ExclComp(){
                     }
                     else {
                         for (Int_t i = 0; i < nG; ++i) {
-                            Double_t mu = means[i];
+                            Double_t mu = seedMeans[i];
                             TLine *l = new TLine(mu, 0, mu, yMax1);
                             l->SetLineColor(help->colors[i % nParts]);
                             l->Draw();
@@ -798,7 +861,7 @@ void nSigma_Plot_ExclComp(){
                     }
                     else {
                         for (Int_t i = 0; i < nG; ++i) {
-                            Double_t mu = means[i];
+                            Double_t mu = seedMeans[i];
                             TLine *l = new TLine(mu, 0, mu, yMax2);
                             l->SetLineColor(help->colors[i % nParts]);
                             l->Draw();
@@ -851,8 +914,10 @@ void nSigma_Plot_ExclComp(){
                     delete leg2;
                     delete sum;
                 }    
-            c->Print(pdfName+"]"); 
-            cCM->Print(cmPdf + "]");
+                c->Print(pdfName+"]"); 
+                if (plotCM) {
+                    cCM->Print(cmPdf + "]"); 
+                }
             }
         }
     };
