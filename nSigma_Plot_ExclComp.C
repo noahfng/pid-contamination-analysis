@@ -34,7 +34,7 @@ struct ndJsonLogger {
     void write_config(Int_t nBins, Double_t xMin, Double_t xMax,
                       Double_t pStart, Double_t pEnd, Double_t step,
                       Double_t muWindow, Double_t mergeDistanceFactor,
-                      Double_t nEntriesLimit, Bool_t FitKaonExclComp,
+                      Double_t nEntries, Bool_t FitKaonExclComp,
                       Bool_t FitProtonExclComp, Bool_t plotTPC, Bool_t plotTOF, Bool_t PeakZoom, Bool_t manualPredictPeaks, Double_t eigenThr, Bool_t useOffDiag)
     {
         f << "{\n"
@@ -47,7 +47,7 @@ struct ndJsonLogger {
           << "\"step\":" << step << ",\n"
           << "\"muWindow\":" << muWindow << ",\n"
           << "\"mergeDistanceFactor\":" << mergeDistanceFactor << ",\n"
-          << "\"nEntriesLimit\":" << nEntriesLimit << ",\n"
+          << "\"nEntries\":" << nEntries << ",\n"
           << "\"FitKaonExclComp\":" << (FitKaonExclComp?"true":"false") << ",\n"
           << "\"FitProtonExclComp\":" << (FitProtonExclComp?"true":"false") << ",\n"
           << "\"plotTPC\":" << (plotTPC?"true":"false") << ",\n"
@@ -102,6 +102,7 @@ struct ndJsonLogger {
                      Double_t kLeft, Double_t kRight,
                      const std::vector<std::vector<Double_t>>& frac,
                      const std::vector<Double_t>& totCont,
+                     const std::vector<Double_t>& totContErr,
                      const std::vector<Double_t>& area_noExcl,
                      const std::vector<Double_t>& err_noExcl,
                      const std::vector<Double_t>& area_wExcl,
@@ -136,6 +137,7 @@ struct ndJsonLogger {
 
         f << "\"frac\":";     dump_mat(f, frac);    f << ",\n";
         f << "\"totCont\":";  dump_vec(f, totCont); f << ",\n";
+        f << "\"totContErr\":"; dump_vec(f, totContErr); f << ",\n";
 
         f << "\"peak_areas\":{\n";
         f << "\"area_noExcl\":"; dump_vec(f, area_noExcl); f << ",\n";
@@ -177,26 +179,23 @@ void nSigma_Plot_ExclComp(){
     const Int_t nParts = helper::nParts;
     const Int_t NtrkMax = help->NtrkMax;
     const Int_t   nBins   = 500;
-    const Double_t xMin   = -10.0, xMax = 10.0;
+    const Double_t xMin   = -12.0, xMax = 8.0;
     const Double_t pStart = 0.45, pEnd = 0.55, step = 0.1;
-    const Double_t muWindow = 0.5;
+    const Double_t muWindow = 2.0;
     const Double_t mergeDistanceFactor = 1.0;
-    const Double_t nEntriesLimit = 1e7; 
+    const Double_t nEntriesLimit = 5e7; 
     const Bool_t FitKaonExclComp = true;
     const Bool_t FitProtonExclComp = false;
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
     const Bool_t PeakZoom = false;
     const Bool_t manualPredictPeaks = true;
-    const Double_t eigenThr = 1e-4;
-    const Bool_t useOffDiag = kTRUE;
+    const Double_t eigenThr = 0;
+    const Bool_t useOffDiag = kFALSE;
     const Bool_t plotCM = true;
     const std::array<Bool_t, nParts> doPid = {{true, false, false, false, false}};
     using PeakPars = std::array<Double_t,4>;
-    const std::vector<Double_t> sigmaExclList = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
-    ndJsonLogger ndlog;
-    ndlog.open(Form("nSigmaEl-Plot-Data-%.2f<p%.2f.ndjson", pStart, pEnd));
-    ndlog.write_config(nBins, xMin, xMax, pStart, pEnd, step, muWindow, mergeDistanceFactor, nEntriesLimit, FitKaonExclComp, FitProtonExclComp, plotTPC, plotTOF, PeakZoom, manualPredictPeaks, eigenThr, useOffDiag);
+    const std::vector<Double_t> sigmaExclList = {3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
 
     gROOT->SetBatch(!manualPredictPeaks);
     gStyle->SetOptStat(1);
@@ -226,6 +225,10 @@ void nSigma_Plot_ExclComp(){
     }
 
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
+
+    ndJsonLogger ndlog;
+    ndlog.open(Form("nSigmaEl-Plot-Data-%.2f<p%.2f.ndjson", pStart, pEnd));
+    ndlog.write_config(nBins, xMin, xMax, pStart, pEnd, step, muWindow, mergeDistanceFactor, nEntries, FitKaonExclComp, FitProtonExclComp, plotTPC, plotTOF, PeakZoom, manualPredictPeaks, eigenThr, useOffDiag);
 
     auto drawNSigma = [&](Bool_t isTPCmode, Double_t sigmaExcl) {
         const Double_t pMin   = isTPCmode ? pStart : std::max(pStart, 0.4);
@@ -321,7 +324,6 @@ void nSigma_Plot_ExclComp(){
                 }
             }
             
-        
             for (Int_t ref = 0; ref < nParts; ++ref) {
                 if (!doPid[ref]) continue;
                 TString pdfName = Form("nSigma%s_%s_%sComp-%.2f.pdf", suffix.Data(), help->pCodes[ref], name, sigmaExcl);
@@ -344,11 +346,9 @@ void nSigma_Plot_ExclComp(){
                     auto cm = cmObj[ref][i];
                     cm->make(useOffDiag, eigenThr);
                     if (plotCM) {
-                        gROOT->SetBatch(kFALSE);
                         cCM->cd();
                         cCM->Clear();
                         cm->plot(cCM, cmPdf);
-                        gROOT->SetBatch(!manualPredictPeaks);
                         c->cd();
                     }
 
@@ -613,6 +613,18 @@ void nSigma_Plot_ExclComp(){
                         Double_t kLeft, kRight;
                         std::vector<std::vector<Double_t>> frac;
                         std::vector<Double_t> totCont;
+                        std::vector<Double_t> totContErr;
+                    };
+
+                    struct IntDerivs { double dA, dMu, dSig; };
+                    auto dGaussInt = [&](double A, double mu, double sig, double a, double b)->IntDerivs {
+                        const double ea = std::exp(-0.5 * std::pow((a-mu)/sig, 2.0));
+                        const double eb = std::exp(-0.5 * std::pow((b-mu)/sig, 2.0));
+                        const double I1 = help->GaussIntegral(1.0, mu, sig, a, b); 
+                        const double dI_dMu  = A * (ea - eb);                      
+                        const double I       = help->GaussIntegral(A,   mu, sig, a, b);
+                        const double dI_dSig = (I/sig) + (A/sig)*((a-mu)*ea - (b-mu)*eb); 
+                        return { I1, dI_dMu, dI_dSig };
                     };
 
                     auto computeBandFractions = [&](Int_t whichHist) -> BandStats {
@@ -622,12 +634,13 @@ void nSigma_Plot_ExclComp(){
 
                         std::vector<std::vector<Double_t>> frac(nG, std::vector<Double_t>(nG, std::numeric_limits<Double_t>::quiet_NaN()));
                         std::vector<Double_t> totCont(nG, std::numeric_limits<Double_t>::quiet_NaN());
+                        std::vector<Double_t> totContErr(nG, std::numeric_limits<Double_t>::quiet_NaN());
 
                         auto integrate_sum_others = [&](Int_t ii, Double_t a, Double_t b) -> Double_t {
-                            const int N = 20480;
+                            const Int_t N = 20480;
                             const Double_t dx = (b - a) / (N - 1);
                             Double_t acc = 0.0;
-                            for (int t = 0; t < N; ++t) {
+                            for (Int_t t = 0; t < N; ++t) {
                                 const Double_t x = a + t*dx;
                                 const Double_t w = (t==0 || t==N-1) ? 0.5 : 1.0;
                                 Double_t y = 0.0;
@@ -660,12 +673,43 @@ void nSigma_Plot_ExclComp(){
                             }
 
                             if (are_i > 0.0) {
-                                const Double_t others_sum_int = integrate_sum_others(ii, a, b);
-                                totCont[ii] = others_sum_int / are_i;
+                                const Double_t S = integrate_sum_others(ii, a, b);
+                                const Double_t R = S / are_i;         
+                                totCont[ii] = R;
+
+                                double varR = 0.0;
+
+                                for (Int_t k = 0; k < nG; ++k) if (k != ii) {
+                                    const double Ak   = par[offA + k];
+                                    const double muk  = par[offM + k];
+                                    const double sigk = par[offS + k];
+                                    auto dK = dGaussInt(Ak, muk, sigk, a, b);
+
+                                    const double gA  = dK.dA   / are_i;
+                                    const double gMu = dK.dMu  / are_i;
+                                    const double gS  = dK.dSig / are_i;
+
+                                    varR += gA  * gA  * err[offA + k] * err[offA + k];
+                                    varR += gMu * gMu * err[offM + k] * err[offM + k];
+                                    varR += gS  * gS  * err[offS + k] * err[offS + k];
+                                }
+
+                                {
+                                    auto dI = dGaussInt(Ai, mui, sigi, a, b);
+                                    const double c = -(R / are_i);
+
+                                    const double gA  = c * dI.dA;
+                                    const double gMu = c * dI.dMu;
+                                    const double gS  = c * dI.dSig;
+
+                                    varR += gA  * gA  * err[offA + ii] * err[offA + ii];
+                                    varR += gMu * gMu * err[offM + ii] * err[offM + ii];
+                                    varR += gS  * gS  * err[offS + ii] * err[offS + ii];
+                                }
+                                totContErr[ii] = (varR >= 0.0) ? std::sqrt(varR) : std::numeric_limits<Double_t>::quiet_NaN();
                             }
                         }
-
-                        return BandStats{kLeft, kRight, std::move(frac), std::move(totCont)};
+                        return BandStats{kLeft, kRight, std::move(frac), std::move(totCont), std::move(totContErr)}; 
                     };
 
                     auto [D1,N1] = help->PoissonDeviance(h1, 0, par, nG, offA1, offA2, offM, offS, offP1, offP2);
@@ -730,7 +774,7 @@ void nSigma_Plot_ExclComp(){
                     ndlog.write_slice(
                         suffix.Data(), "noExcl", sigmaExcl, help->pCodes[ref],
                         i, pEdges[i], pEdges[i+1],
-                        band_no.kLeft, band_no.kRight, band_no.frac, band_no.totCont,
+                        band_no.kLeft, band_no.kRight, band_no.frac, band_no.totCont, band_no.totContErr,
                         areas_noK, err_areas_noK,  
                         areas_wK,  err_areas_wK,  
                         D_over_N, chi2_over_ndf,
@@ -741,7 +785,7 @@ void nSigma_Plot_ExclComp(){
                     ndlog.write_slice(
                         suffix.Data(), "wExcl", sigmaExcl, help->pCodes[ref],
                         i, pEdges[i], pEdges[i+1],
-                        band_w.kLeft, band_w.kRight, band_w.frac, band_w.totCont,
+                        band_w.kLeft, band_w.kRight, band_w.frac, band_w.totCont, band_w.totContErr,
                         areas_noK, err_areas_noK,
                         areas_wK,  err_areas_wK,
                         D_over_N, chi2_over_ndf,
