@@ -104,10 +104,8 @@ struct ndJsonLogger {
                      const std::vector<std::vector<Double_t>>& frac,
                      const std::vector<Double_t>& totCont,
                      const std::vector<Double_t>& totContErr,
-                     const std::vector<Double_t>& area_noExcl,
-                     const std::vector<Double_t>& err_noExcl,
-                     const std::vector<Double_t>& area_wExcl,
-                     const std::vector<Double_t>& err_wExcl,
+                     const std::vector<Double_t>& area,
+                     const std::vector<Double_t>& area_err,
                      Double_t D_over_N, Double_t chi2_over_ndf,
                      Bool_t manualPredictPeaks,
                      const std::vector<Double_t>& seedMeans,
@@ -115,14 +113,11 @@ struct ndJsonLogger {
                      const std::vector<Double_t>& seedAmps,
                      const std::vector<Double_t>& fitMeans,
                      const std::vector<Double_t>& fitSigmas,
-                     const std::vector<Double_t>& fitAmps_noExcl,
-                     const std::vector<Double_t>& fitAmps_wExcl,
+                     const std::vector<Double_t>& fitAmps,
                      const std::vector<Double_t>& err_fitMeans,
                      const std::vector<Double_t>& err_fitSigmas,
-                     const std::vector<Double_t>& err_fitAmps_noExcl,
-                     const std::vector<Double_t>& err_fitAmps_wExcl,
-                     Double_t bg_noExcl, Double_t bg_wExcl,
-                     Double_t err_bg_noExcl, Double_t err_bg_wExcl)
+                     const std::vector<Double_t>& err_fitAmps,
+                     Double_t bg, Double_t bg_err)
     {
         f << "{\n"
           << "\"tag\":\"" << tag << "\",\n"
@@ -131,26 +126,24 @@ struct ndJsonLogger {
           << "\"slice\":" << slice << ",\n"
           << "\"pmin\":" << pmin << ",\n"
           << "\"pmax\":" << pmax << ",\n"
-          << "\"band_window\":{\n"
-              << "\"kLeft\":" << kLeft << ",\n"
-              << "\"kRight\":" << kRight
-          << "\n},\n";
+          << "\"band_window\":{"
+              << "\"kLeft\":" << kLeft << ", "
+              << "\"kRight\":" << kRight 
+          << "},\n";
 
         f << "\"frac\":";     dump_mat(f, frac);    f << ",\n";
         f << "\"totCont\":";  dump_vec(f, totCont); f << ",\n";
         f << "\"totContErr\":"; dump_vec(f, totContErr); f << ",\n";
 
         f << "\"peak_areas\":{\n";
-        f << "\"area_noExcl\":"; dump_vec(f, area_noExcl); f << ",\n";
-        f << "\"err_noExcl\":";  dump_vec(f, err_noExcl);  f << ",\n";
-        f << "\"area_wExcl\":";  dump_vec(f, area_wExcl);  f << ",\n";
-        f << "\"err_wExcl\":";   dump_vec(f, err_wExcl);
-        f << "\n},\n";
+        f << "\"area\":"; dump_vec(f, area); f << ",\n";
+        f << "\"area_err\":";  dump_vec(f, area_err);  f << ",\n";
+        f << "},\n";
 
-        f << "\"fit_quality\":{\n"
-          << "\"D_over_N\":" << D_over_N << ",\n"
+        f << "\"fit_quality\":{"
+          << "\"D_over_N\":" << D_over_N << ", "
           << "\"chi2_over_ndf\":" << chi2_over_ndf
-          << "\n},\n";
+          << "},\n";
 
         f << "\"peak_seeding\":{\n";
         f << "\"mode\":\"" << (manualPredictPeaks ? "manual" : "auto") << "\",\n";
@@ -164,13 +157,9 @@ struct ndJsonLogger {
         f << "\"means_err\":";  dump_vec(f, err_fitMeans); f << ",\n";
         f << "\"sigmas\":"; dump_vec(f, fitSigmas); f << ",\n";
         f << "\"sigmas_err\":"; dump_vec(f, err_fitSigmas); f << ",\n";
-        f << "\"amps_noExcl\":"; dump_vec(f, fitAmps_noExcl); f << ",\n";
-        f << "\"amps_err_noExcl\":"; dump_vec(f, err_fitAmps_noExcl); f << ",\n";
-        f << "\"amps_wExcl\":";  dump_vec(f, fitAmps_wExcl);  f << ",\n";
-        f << "\"amps_err_wExcl\":";  dump_vec(f, err_fitAmps_wExcl);  f << ",\n";
-        f << "\"bg_noExcl\":" << bg_noExcl << ", \"bg_wExcl\":" << bg_wExcl << ",\n";
-        f << "\"bg_err_noExcl\":" << err_bg_noExcl << ", \"bg_err_wExcl\":" << err_bg_wExcl << "\n";
-        f << "}\n";
+        f << "\"amps\":"; dump_vec(f, fitAmps); f << ",\n";
+        f << "\"amps_err\":"; dump_vec(f, err_fitAmps); f << ",\n";
+        f << "\"bg\":" << bg << ", \"bg_err\":" << bg_err ; f << "\n}\n";
         f << "}\n\n";
     }
 };
@@ -229,7 +218,7 @@ void nSigma_Plot_ExclComp(){
     const Double_t pStart = getenv_double("PSTART", 0.45), pEnd = getenv_double("PEND", 0.55), step = 0.1;
     const Double_t muWindow = 2.0;
     const Double_t mergeDistanceFactor = 1.0;
-    const Double_t nEntriesLimit = 1e8; 
+    const Double_t nEntriesLimit = 1e7; 
     const Bool_t FitKaonExclComp = getenv_bool("FITKAONEXCLCOMP", true);
     const Bool_t FitProtonExclComp = getenv_bool("FITPROTONEXCLCOMP", false);
     const Bool_t plotTPC = true;
@@ -804,26 +793,24 @@ void nSigma_Plot_ExclComp(){
                     auto band_w  = computeBandFractions(1); 
 
                     ndlog.write_slice(
-                        suffix.Data(), "noExcl", sigmaExcl, help->pCodes[ref],
+                        suffix.Data(), "noExcl", sigmaExcl, help->pNames[ref],
                         i, pEdges[i], pEdges[i+1],
                         band_no.kLeft, band_no.kRight, band_no.frac, band_no.totCont, band_no.totContErr,
-                        areas_noK, err_areas_noK,  
-                        areas_wK,  err_areas_wK,  
+                        areas_noK, err_areas_noK,   
                         D_over_N, chi2_over_ndf,
                         manualPredictPeaks, seedMeans, seedSigmas, seedAmps,
-                        fitMeans, fitSigmas, fitAmps_noExcl, fitAmps_wExcl, e_fitMeans, e_fitSigmas, e_fitAmps_noExcl, e_fitAmps_wExcl,
-                        bkg_noExcl, bkg_wExcl, ebkg_noExcl, ebkg_wExcl);
+                        fitMeans, fitSigmas, fitAmps_noExcl, e_fitMeans, e_fitSigmas, e_fitAmps_noExcl,
+                        bkg_noExcl, ebkg_noExcl);
 
                     ndlog.write_slice(
-                        suffix.Data(), "wExcl", sigmaExcl, help->pCodes[ref],
+                        suffix.Data(), "wExcl", sigmaExcl, help->pNames[ref],
                         i, pEdges[i], pEdges[i+1],
                         band_w.kLeft, band_w.kRight, band_w.frac, band_w.totCont, band_w.totContErr,
-                        areas_noK, err_areas_noK,
                         areas_wK,  err_areas_wK,
                         D_over_N, chi2_over_ndf,
                         manualPredictPeaks, seedMeans, seedSigmas, seedAmps,
-                        fitMeans, fitSigmas, fitAmps_noExcl, fitAmps_wExcl, e_fitMeans, e_fitSigmas, e_fitAmps_noExcl, e_fitAmps_wExcl,
-                        bkg_noExcl, bkg_wExcl, ebkg_noExcl, ebkg_wExcl);
+                        fitMeans, fitSigmas, fitAmps_wExcl, e_fitMeans, e_fitSigmas, e_fitAmps_wExcl,
+                        bkg_wExcl, ebkg_wExcl);
 
                     const Int_t nPoints = 500; 
                     Double_t dx  = (x_high - x_low)/(nPoints-1);

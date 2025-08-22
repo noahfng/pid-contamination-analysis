@@ -145,10 +145,10 @@ struct ndJsonLogger {
         f << "\"area_err\":";   dump_vec(f, area_err);
         f << "\n},\n";
 
-        f << "\"fit_quality\":{\n"
+        f << "\"fit_quality\":{"
           << "\"D_over_N\":" << D_over_N << ",\n"
           << "\"chi2_over_ndf\":" << chi2_over_ndf
-          << "\n},\n";
+          << "},\n";
 
         f << "\"peak_seeding\":{\n";
         f << "\"mode\":\"" << (manualPredictPeaks ? "manual" : "auto") << "\",\n";
@@ -247,7 +247,7 @@ void Plot_Different_nSigmas(){
     const Double_t pStart = getenv_double("PSTART", 0.45), pEnd = getenv_double("PEND", 0.55), step = 0.1;
     const Double_t muWindow = 2.0;
     const Double_t mergeDistanceFactor = 1.0;
-    const Double_t nEntriesLimit = 1e8; 
+    const Double_t nEntriesLimit = 1e7; 
     const Bool_t FitKaonExclComp = getenv_bool("FITKAONEXCLCOMP", true);
     const Bool_t FitProtonExclComp = getenv_bool("FITPROTONEXCLCOMP", false);
     const Bool_t plotTPC = true;
@@ -891,7 +891,7 @@ void Plot_Different_nSigmas(){
             auto band_w  = computeBandFractions(1); 
 
             ndlog.write_slice(
-                suffix.Data(), "h1", sigmaExcl, help->pCodes[primaryRef],
+                suffix.Data(), "h1", sigmaExcl, help->pNames[primaryRef],
                 i, pEdges[i], pEdges[i+1],
                 band_no.kLeft, band_no.kRight, band_no.frac, band_no.totCont, band_no.totContErr,
                 areas1, err_areas1,  
@@ -901,7 +901,7 @@ void Plot_Different_nSigmas(){
                 bkg1, ebkg1);
 
             ndlog.write_slice(
-                suffix.Data(), "h2", sigmaExcl, help->pCodes[secondaryRef],
+                suffix.Data(), "h2", sigmaExcl, help->pNames[secondaryRef],
                 i, pEdges[i], pEdges[i+1],
                 band_w.kLeft, band_w.kRight, band_w.frac, band_w.totCont, band_w.totContErr,
                 areas2, err_areas2,  
