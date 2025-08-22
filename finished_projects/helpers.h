@@ -99,7 +99,7 @@ public:
         return I;
     }
 
-    std::pair<Double_t,Double_t> PoissonDeviance(TH1F* h, Int_t whichHist, const std::vector<Double_t>& par, Int_t nG, Int_t offA1, Int_t offA2, Int_t offM1, Int_t offM2, Int_t offS1, Int_t offS2, Int_t offP1, Int_t offP2){
+    std::pair<Double_t,Double_t> PoissonDeviance(TH1* h, Int_t whichHist, const std::vector<Double_t>& par, Int_t nG, Int_t offA1, Int_t offA2, Int_t offM1, Int_t offM2, Int_t offS1, Int_t offS2, Int_t offP1, Int_t offP2){
         Double_t D = 0.0, N = 0.0;
         const Int_t nb = h->GetNbinsX();
         for (Int_t ib=1; ib<=nb; ++ib) {
