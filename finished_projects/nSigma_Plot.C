@@ -309,7 +309,7 @@ void nSigma_Plot(){
                         Double_t sig0 = manualSigmas[i]; 
                         Double_t amp = manualAmps[i];
 
-                        sum->SetParLimits(3*i+0, 0.0, std::max(h1->GetMaximum()*1.2, 1.05*amp));
+                        sum->SetParLimits(3*i+0, 0.0, 1e10);
                         sum->SetParameter(3*i+0, amp);
 
                         sum->SetParLimits(3*i+1, mu0 - muWindow, mu0 + muWindow);
@@ -324,7 +324,7 @@ void nSigma_Plot(){
                     else {
                         const auto &p = merged[i];
 
-                        sum->SetParLimits(3*i, 0.0, std::max(h1->GetMaximum()*1.2, p.A*1.05));
+                        sum->SetParLimits(3*i, 0.0, 1e10);
                         sum->SetParameter(3*i, p.A);
 
                         Double_t dMu = std::max(muWindow, 0.1*std::abs(p.mu));

@@ -12,7 +12,6 @@
 #include "TMath.h"
 #include "TChain.h"
 #include "TCanvas.h"
-#include "TH1F.h"
 #include "TLegend.h"
 #include "TF1.h"  
 #include "TLine.h"
@@ -230,7 +229,7 @@ void nSigma_Plot_ExclComp(){
     const Double_t pStart = getenv_double("PSTART", 0.45), pEnd = getenv_double("PEND", 0.55), step = 0.1;
     const Double_t muWindow = 2.0;
     const Double_t mergeDistanceFactor = 1.0;
-    const Double_t nEntriesLimit = 1e7; 
+    const Double_t nEntriesLimit = 1e8; 
     const Bool_t FitKaonExclComp = getenv_bool("FITKAONEXCLCOMP", true);
     const Bool_t FitProtonExclComp = getenv_bool("FITPROTONEXCLCOMP", false);
     const Bool_t plotTPC = true;
@@ -242,7 +241,7 @@ void nSigma_Plot_ExclComp(){
     const Bool_t plotCM = false;
     const std::array<Bool_t, nParts> doPid = {{true, false, false, false, false}};
     using PeakPars = std::array<Double_t,4>;
-    const std::vector<Double_t> sigmaExclList = {3.0, 4.0, 5.0, 6.0};
+    const std::vector<Double_t> sigmaExclList = {3.0};
 
     gROOT->SetBatch(!manualPredictPeaks);
     gStyle->SetOptStat(1);
@@ -291,8 +290,8 @@ void nSigma_Plot_ExclComp(){
         for (auto [excl, doThis]: modes) {
             if(!doThis) continue;
             const Char_t* name = (excl==KaonExcl ? "KaonExcl" : "ProtonExcl");
-            std::vector<std::vector<TH1F*>> h_no(nParts, std::vector<TH1F*>(nSteps,nullptr));
-            std::vector<std::vector<TH1F*>> h_w(nParts, std::vector<TH1F*>(nSteps,nullptr));
+            std::vector<std::vector<TH1D*>> h_no(nParts, std::vector<TH1D*>(nSteps,nullptr));
+            std::vector<std::vector<TH1D*>> h_w(nParts, std::vector<TH1D*>(nSteps,nullptr));
 
             std::vector<std::vector<TH1D*>> hcm_no(nParts, std::vector<TH1D*>(nSteps,nullptr));
             std::vector<std::vector<TH1D*>> hcm_w (nParts, std::vector<TH1D*>(nSteps,nullptr));
@@ -304,8 +303,8 @@ void nSigma_Plot_ExclComp(){
                     auto name_w = Form("n#sigma_%s %g < p < %g GeV/c (%s-%.2f-%s)", help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), sigmaExcl, name);
                     auto title_no = Form("n#sigma_{%s} %g < p < %g GeV/c (%s-no%s); n#sigma_{%s}; Counts", help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), name, help->pCodes[pid]);
                     auto title_w = Form("n#sigma_{%s} %g < p < %g GeV/c (%s-%.2f-%s); n#sigma_{%s}; Counts", help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), sigmaExcl, name, help->pCodes[pid]);
-                    h_no[pid][i] = new TH1F(name_no, title_no, nBins, xMin, xMax);
-                    h_w [pid][i] = new TH1F(name_w, title_w, nBins, xMin, xMax);
+                    h_no[pid][i] = new TH1D(name_no, title_no, nBins, xMin, xMax);
+                    h_w [pid][i] = new TH1D(name_w, title_w, nBins, xMin, xMax);
                     h_no[pid][i]->SetMarkerStyle(kFullCircle);
                     h_no[pid][i]->SetMarkerSize(0.75);
                     h_no[pid][i]->SetMarkerColor(kBlack);
@@ -399,8 +398,8 @@ void nSigma_Plot_ExclComp(){
                         c->cd();
                     }
 
-                    TH1F* h1 = nullptr;
-                    TH1F* h2 = nullptr;
+                    TH1D* h1 = nullptr;
+                    TH1D* h2 = nullptr;
                     h1 = h_no[ref][i];
                     h2 = h_w[ref][i];
                     struct Peak {Double_t A, mu, sigma; Int_t id; std::vector<Int_t> merged_ids;Bool_t alwaysSeparate = false;};
@@ -597,10 +596,10 @@ void nSigma_Plot_ExclComp(){
                             Double_t sig0 = seedSigmas[i]; 
                             Double_t amp = seedAmps[i]; 
 
-                            sum->SetParLimits(offA1 + i, 0.0, std::max(h1->GetMaximum()*1.2, 1.05*amp));
+                            sum->SetParLimits(offA1 + i, 0.0, 1e10);
                             sum->SetParameter(offA1 + i, amp);
 
-                            sum->SetParLimits(offA2 + i, 0, std::max(h1->GetMaximum()*1.2, 1.05*amp));
+                            sum->SetParLimits(offA2 + i, 0.0, 1e10);
                             sum->SetParameter (offA2 + i, amp);
 
                             sum->SetParLimits(offM + i, mu0 - muWindow, mu0 + muWindow);
@@ -615,10 +614,10 @@ void nSigma_Plot_ExclComp(){
                         else {
                             const auto &p = merged[i];
 
-                            sum->SetParLimits(offA1 + i, 0.0, std::max(h1->GetMaximum()*1.2, 1.05*p.A));
+                            sum->SetParLimits(offA1 + i, 0.0, 1e10);
                             sum->SetParameter(offA1 + i, p.A);
 
-                            sum->SetParLimits(offA2 + i, 0, std::max(h1->GetMaximum()*1.2, 1.05*p.A));
+                            sum->SetParLimits(offA2 + i, 0.0, 1e10);
                             sum->SetParameter (offA2 + i, p.A);
 
                             sum->SetParLimits(offM + i, p.mu - muWindow, p.mu + muWindow);

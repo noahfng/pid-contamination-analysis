@@ -12,7 +12,7 @@
 #include "TMath.h"
 #include "TChain.h"
 #include "TCanvas.h"
-#include "TH1F.h"
+#include "TH1D.h"
 #include "TLegend.h"
 #include "TF1.h"  
 #include "TLine.h"
@@ -23,6 +23,8 @@
 #include <AddTrees.h>
 #include <helpers.h>
 #include <covarianceMatrix.h>
+
+enum PID {kEl=0, kMu=1, kPi=2, kKa=3, kPr=4};
 
 struct ndJsonLogger {
     std::ofstream f;
@@ -214,6 +216,27 @@ static inline std::vector<Double_t> getenv_vecd(const Char_t* k, std::vector<Dou
   return out.empty()? fallback : out;
 }
 
+static inline Int_t getenv_pid(const Char_t* key, Int_t fallback){
+  const Char_t* v = gSystem->Getenv(key);
+  if(!v || !*v) return fallback;
+
+  Char_t* end = nullptr;
+  long x = strtol(v, &end, 10);
+  if (end && *end == 0 && x >= 0 && x <= 4) return (Int_t)x;
+
+  TString s(v);
+  s = s.Strip(TString::kBoth);
+  s.ToLower();
+
+  if (s=="el" || s=="e"  || s=="electron") return kEl;
+  if (s=="mu" || s=="muon")                 return kMu;
+  if (s=="pi" || s=="pion")                 return kPi;
+  if (s=="ka" || s=="k"   || s=="kaon")     return kKa;
+  if (s=="pr" || s=="p"   || s=="proton")   return kPr;
+
+  return fallback;
+}
+
 void Plot_Different_nSigmas(){
     auto help = new helper();
     const Int_t nParts = helper::nParts;
@@ -224,7 +247,7 @@ void Plot_Different_nSigmas(){
     const Double_t pStart = getenv_double("PSTART", 0.45), pEnd = getenv_double("PEND", 0.55), step = 0.1;
     const Double_t muWindow = 2.0;
     const Double_t mergeDistanceFactor = 1.0;
-    const Double_t nEntriesLimit = 1e7; 
+    const Double_t nEntriesLimit = 1e8; 
     const Bool_t FitKaonExclComp = getenv_bool("FITKAONEXCLCOMP", true);
     const Bool_t FitProtonExclComp = getenv_bool("FITPROTONEXCLCOMP", false);
     const Bool_t plotTPC = true;
@@ -237,9 +260,8 @@ void Plot_Different_nSigmas(){
     const std::vector<Double_t> sigmaExclList = {0.0};
     const Bool_t KaonExcl = false;
     const Bool_t ProtonExcl = false;
-    enum PID {kEl=0, kMu=1, kPi=2, kKa=3, kPr=4};
-    const Int_t primaryRef = kEl;
-    const Int_t secondaryRef = kPi;
+    const Int_t primaryRef   = getenv_pid("PRIMARY_REF",   kEl);
+    const Int_t secondaryRef = getenv_pid("SECONDARY_REF", kPi); 
     using PeakPars = std::array<Double_t,4>;
 
     gROOT->SetBatch(!manualPredictPeaks);
@@ -282,8 +304,8 @@ void Plot_Different_nSigmas(){
         for (Int_t i = 0; i <= nSteps; ++i) pEdges[i] = pMin + i * step;
         TString suffix = isTPCmode ? "TPC" : "TOF";    
 
-        std::vector<TH1F*> h_pri(nSteps, nullptr);
-        std::vector<TH1F*> h_sec(nSteps, nullptr);
+        std::vector<TH1D*> h_pri(nSteps, nullptr);
+        std::vector<TH1D*> h_sec(nSteps, nullptr);
         std::vector<TH1D*> h1cm(nSteps, nullptr);
         std::vector<TH1D*> h2cm(nSteps, nullptr);
         std::vector<covarianceMatrix*> cmObj(nSteps, nullptr);
@@ -293,8 +315,8 @@ void Plot_Different_nSigmas(){
             auto name2 = Form("n#sigma_%s %g < p < %g GeV/c (%s)", help->pCodes[secondaryRef], pEdges[i], pEdges[i+1], suffix.Data());
             auto title1 = Form("n#sigma_{%s} %g < p < %g GeV/c (%s); n#sigma_{%s}; Counts", help->pCodes[primaryRef], pEdges[i], pEdges[i+1], suffix.Data(), help->pCodes[primaryRef]);
             auto title2 = Form("n#sigma_{%s} %g < p < %g GeV/c (%s); n#sigma_{%s}; Counts", help->pCodes[secondaryRef], pEdges[i], pEdges[i+1], suffix.Data(), help->pCodes[secondaryRef]);
-            h_pri[i] = new TH1F(name1, title1, nBins, xMin1, xMax1);
-            h_sec[i] = new TH1F(name2, title2, nBins, xMin2, xMax2);
+            h_pri[i] = new TH1D(name1, title1, nBins, xMin1, xMax1);
+            h_sec[i] = new TH1D(name2, title2, nBins, xMin2, xMax2);
             h_pri[i]->SetMarkerStyle(kFullCircle);
             h_pri[i]->SetMarkerSize(0.75);
             h_pri[i]->SetMarkerColor(kBlack);
@@ -332,13 +354,10 @@ void Plot_Different_nSigmas(){
                 if (TMath::IsNaN(val1)) continue;
                 if (TMath::IsNaN(val2)) continue;
                 
-                if (KaonExcl && TMath::Abs(tofNS[3][t]) || TMath::IsNaN(tofNS[3][t])) {
-                    h_pri[bin]->Fill(val1);
-                    h_sec[bin]->Fill(val2);
-                } else if (ProtonExcl && TMath::Abs(tofNS[4][t]) || TMath::IsNaN(tofNS[4][t])) {
-                    h_pri[bin]->Fill(val1);
-                    h_sec[bin]->Fill(val2);
-                } else {
+                const bool passK = TMath::IsNaN(tofNS[kKa][t]) || TMath::Abs(tofNS[kKa][t]) >= sigmaExcl;
+                const bool passP = TMath::IsNaN(tofNS[kPr][t]) || TMath::Abs(tofNS[kPr][t]) >= sigmaExcl;
+
+                if ((!KaonExcl && !ProtonExcl) || (KaonExcl && passK) || (ProtonExcl && passP)) {
                     h_pri[bin]->Fill(val1);
                     h_sec[bin]->Fill(val2);
                 }
@@ -350,37 +369,15 @@ void Plot_Different_nSigmas(){
                 toadd->reserve(2);
                 toadd->clear();
 
-                if (KaonExcl) {
-                    if (TMath::Abs(tofNS[3][t]) || TMath::IsNaN(tofNS[3][t])){
-                        nsVals->push_back(val1); 
-                        toadd->push_back(true);
-                        nsVals->push_back(val2); 
-                        toadd->push_back(true);
-                    } else {
-                        nsVals->push_back(-999.0); 
-                        toadd->push_back(false);
-                        nsVals->push_back(-999.0); 
-                        toadd->push_back(false);
-                    }
-                } else if (ProtonExcl) {
-                    if (TMath::Abs(tofNS[4][t]) || TMath::IsNaN(tofNS[4][t])){
-                        nsVals->push_back(val1); 
-                        toadd->push_back(true);
-                        nsVals->push_back(val2); 
-                        toadd->push_back(true);
-                    } else {
-                        nsVals->push_back(-999.0); 
-                        toadd->push_back(false);
-                        nsVals->push_back(-999.0); 
-                        toadd->push_back(false);
-                    }
+                const bool keep = (!KaonExcl && !ProtonExcl) || (KaonExcl && passK) || (ProtonExcl && passP);
+                if (keep) {
+                nsVals->push_back(val1); toadd->push_back(true);
+                nsVals->push_back(val2); toadd->push_back(true);
                 } else {
-                    nsVals->push_back(val1); 
-                    toadd->push_back(true);
-                    nsVals->push_back(val2); 
-                    toadd->push_back(true);
+                nsVals->push_back(-999.0); toadd->push_back(false);
+                nsVals->push_back(-999.0); toadd->push_back(false);
                 }
-                
+                                
                 cmObj[bin]->addEvent(nsVals, toadd);
             }
         }
@@ -410,8 +407,8 @@ void Plot_Different_nSigmas(){
                 cm->plot(cCM, cmPdf);
                 c->cd();
             }
-            TH1F* h1 = h_pri[i];
-            TH1F* h2 = h_sec[i];
+            TH1D* h1 = h_pri[i];
+            TH1D* h2 = h_sec[i];
 
             struct Peak {Double_t A1, mu1, sigma1; Double_t A2, mu2, sigma2; Int_t id; std::vector<Int_t> merged_ids;Bool_t alwaysSeparate = false;};
             std::vector<Peak> seeds;
@@ -565,8 +562,10 @@ void Plot_Different_nSigmas(){
             };
 
             if (PeakZoom) {
-                auto [x_low1,  x_high1 ] = compute_zoom([](const Peak& p){return p.mu1;},[](const Peak& p){return p.sigma1;}, xMin1, xMax1);
-                auto [x_low2,  x_high2 ] = compute_zoom([](const Peak& p){return p.mu2;},[](const Peak& p){return p.sigma2;}, xMin2, xMax2);
+                auto z1 = compute_zoom([](const Peak& p){return p.mu1;},[](const Peak& p){return p.sigma1;}, xMin1, xMax1);
+                x_low1  = z1.first;  x_high1 = z1.second;
+                auto z2 = compute_zoom([](const Peak& p){return p.mu2;},[](const Peak& p){return p.sigma2;}, xMin2, xMax2);
+                x_low2  = z2.first;  x_high2 = z2.second;
             }
 
             Int_t manualNGauss = 0;
@@ -576,11 +575,11 @@ void Plot_Different_nSigmas(){
                 manualNGauss = getenv_int("MANUAL_NGAUSS", 4);
                 auto defMeans1  = std::vector<Double_t>{-6.0, -5.0, 0.0, 1.5};
                 auto defSigmas1 = std::vector<Double_t>{1.0, 1.0, 1.0, 1.0};
-                auto defAmps1   = std::vector<Double_t>{4e5, 4e5, 1e4, 1e4};
+                auto defAmps1   = std::vector<Double_t>{1e5, 1e5, 1e3, 1e3};
 
                 auto defMeans2  = std::vector<Double_t>{-1.0, 0.0, 7.0, 9.0};
                 auto defSigmas2 = std::vector<Double_t>{1.0, 1.0, 1.0, 1.0};
-                auto defAmps2   = std::vector<Double_t>{4e5, 4e5, 1e4, 1e4};
+                auto defAmps2   = std::vector<Double_t>{1e5, 1e5, 1e3, 1e3};
 
                 auto mMeans1  = getenv_vecd("MANUAL_MEANS1",  defMeans1);
                 auto mSigmas1 = getenv_vecd("MANUAL_SIGMAS1", defSigmas1);
@@ -667,10 +666,10 @@ void Plot_Different_nSigmas(){
                     Double_t sig2 = seedSigmas2[i]; 
                     Double_t amp2 = seedAmps2[i];
 
-                    sum->SetParLimits(offA1 + i, 0.0, std::max(h1->GetMaximum()*1.2, 1.05*amp1));
+                    sum->SetParLimits(offA1 + i, 0.0, 1e10);
                     sum->SetParameter(offA1 + i, amp1);
 
-                    sum->SetParLimits(offA2 + i, 0, std::max(h2->GetMaximum()*1.2, 1.05*amp2));
+                    sum->SetParLimits(offA2 + i, 0, 1e10);
                     sum->SetParameter (offA2 + i, amp2);
 
                     sum->SetParLimits(offM1 + i, mu1 - muWindow, mu1 + muWindow);
@@ -688,10 +687,10 @@ void Plot_Different_nSigmas(){
                 else {
                     const auto &p = merged[i];
 
-                    sum->SetParLimits(offA1 + i, 0.0, std::max(h1->GetMaximum()*1.2, 1.05*p.A1));
+                    sum->SetParLimits(offA1 + i, 0.0, 1e10);
                     sum->SetParameter(offA1 + i, p.A1);
 
-                    sum->SetParLimits(offA2 + i, 0, std::max(h1->GetMaximum()*1.2, 1.05*p.A2));
+                    sum->SetParLimits(offA2 + i, 0.0, 1e10);
                     sum->SetParameter (offA2 + i, p.A2);
 
                     sum->SetParLimits(offM1 + i, p.mu1 - muWindow, p.mu1 + muWindow);
@@ -919,8 +918,8 @@ void Plot_Different_nSigmas(){
             const double bw1 = h1->GetXaxis()->GetBinWidth(1);
             const double bw2 = h2->GetXaxis()->GetBinWidth(1);
             for(Int_t ip=0; ip<nPoints; ++ip) {
-                Double_t x1 = xMin1 + ip*dx1;
-                Double_t x2 = xMin2 + ip*dx2;
+                Double_t x1 = x_low1 + ip*dx1;
+                Double_t x2 = x_low2 + ip*dx2;
                 xv1[ip] = x1;
                 xv2[ip] = x2;
                 Double_t yy1 = par[offP1] * bw1;
