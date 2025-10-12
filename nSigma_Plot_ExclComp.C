@@ -218,7 +218,7 @@ void nSigma_Plot_ExclComp(){
     const Double_t pStart = getenv_double("PSTART", 0.45), pEnd = getenv_double("PEND", 0.55), step = 0.1;
     const Double_t muWindow = 2.0;
     const Double_t mergeDistanceFactor = 1.0;
-    const Double_t nEntriesLimit = 1e7; 
+    const Double_t nEntriesLimit = 1e12; 
     const Bool_t FitKaonExclComp = getenv_bool("FITKAONEXCLCOMP", true);
     const Bool_t FitProtonExclComp = getenv_bool("FITPROTONEXCLCOMP", false);
     const Bool_t plotTPC = true;
@@ -230,7 +230,7 @@ void nSigma_Plot_ExclComp(){
     const Bool_t plotCM = false;
     const std::array<Bool_t, nParts> doPid = {{true, false, false, false, false}};
     using PeakPars = std::array<Double_t,4>;
-    const std::vector<Double_t> sigmaExclList = {3.0};
+    const std::vector<Double_t> sigmaExclList = {2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
 
     gROOT->SetBatch(!manualPredictPeaks);
     gStyle->SetOptStat(1);
