@@ -15,7 +15,7 @@
 
 class helper{
 public:
-    const Char_t* base_dir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
+    const Char_t* base_dir = "/Users/noahfng/SMI/UD_LHC23_pass4_SingleGap/0106/B";
     const Int_t NtrkMax = 2;
 
     enum {nParts = 5};
