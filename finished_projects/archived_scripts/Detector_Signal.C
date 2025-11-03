@@ -22,7 +22,7 @@ void Detector_Signal() {
     const Int_t    nSteps = Int_t(std::floor((pEnd - pStart) / step + 0.5));
     const Int_t   nBins = 200;
     const Double_t xMin  =   0, xMax = 250;
-    const Double_t nEntriesMax = 1e8;
+    const Double_t nEntriesMax = 1e7;
     const Int_t nParts = helper::nParts;
     const Int_t NtrkMax = help->NtrkMax;
 
