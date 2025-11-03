@@ -7,36 +7,36 @@
 #include "TString.h"     
 #include "TLorentzVector.h" 
 
-#include <AddTrees.h>
-#include <helpers.h>
+#include <AddTrees.h>   // project-specific: file discovery/chain fill
+#include <helpers.h>    // project-specific: masses, charges, colors, Bethe–Bloch
 
 void Invariant_Mass_vs_pt() {
     auto help = new helper();
     gROOT->SetBatch(kTRUE);
     gStyle->SetPalette(kRainBow);
 
-    const Bool_t    applyTPCnSigmaFilter = false;
-    const Float_t nSigmaTPC            = 3.0;
-    const Bool_t    applyTOFEventfilter  = false;
-    const Bool_t    applyTOFnSigmaFilter = false;
-    const Float_t nSigmaTOF            = 3.0;
-    const Bool_t    plotSysPt            = true;
-    const Bool_t    plotTrackPt          = false; // if both true, the 2D plot will show plotSysPt 
-    const Double_t nEntriesLimit = 1e6;
-    const Int_t   nMassBins = 100;
-    const Float_t massMax   =   5.0;
-    const Int_t   nPtBins   = 100;
-    const Float_t ptMax     =   5.0;
+    // basic config
+    const Double_t nEntriesLimit = 1e6;  
+    const Bool_t applyTPCnSigmaFilter = false; // TPC PID gate
+    const Float_t nSigmaTPC = 3.0;
+    const Bool_t applyTOFEventfilter = false; // require valid TOF momentum for both tracks
+    const Bool_t applyTOFnSigmaFilter = false; // TOF PID gate
+    const Float_t nSigmaTOF = 3.0;
+
+    // if both true, the 2D plot will show plotSysPt 
+    const Bool_t plotSysPt = true; // pair pT: |pT(0)+pT(1)| → 1 entry/event
+    const Bool_t plotTrackPt = false; // track pT: |pT(t)| for t=0,1 → 2 entries/event
+
+    const Int_t nMassBins = 100; const Float_t massMax = 5.0; // GeV/c^2
+    const Int_t   nPtBins = 100; const Float_t ptMax = 5.0; // GeV/c
+
     const Int_t nParts = helper::nParts;
     const Int_t NtrkMax = help->NtrkMax;
 
-    TString yTitle = plotSysPt
-                     ? "p_{T,sys}"
-                     : "p_{T,track}";
-    TString outName = plotSysPt
-                      ? "M_vs_PT_sys.pdf"
-                      : "M_vs_PT_track.pdf";
+    TString yTitle = plotSysPt ? "p_{T,sys}" : "p_{T,track}";
+    TString outName = plotSysPt ? "M_vs_PT_sys.pdf" : "M_vs_PT_track.pdf";
 
+    // input data chain
     TChain chain("twotauchain");
     AddTrees(chain, help->base_dir);
     
@@ -47,7 +47,8 @@ void Invariant_Mass_vs_pt() {
     chain.SetBranchStatus("fTrkTOFexpMom", 1);
     for (Int_t i = 0; i < nParts; ++i) {
         chain.SetBranchStatus(Form("fTrkTPCnSigma%s", help->pNames[i]), 1);
-        chain.SetBranchStatus(Form("fTrkTOFnSigma%s", help->pNames[i]), 1);}
+        chain.SetBranchStatus(Form("fTrkTOFnSigma%s", help->pNames[i]), 1);
+    }
 
     std::vector<Float_t> px(NtrkMax);
     std::vector<Float_t> py(NtrkMax);
@@ -62,18 +63,16 @@ void Invariant_Mass_vs_pt() {
     chain.SetBranchAddress("fTrkPz",pz.data());
     for (Int_t i = 0; i < nParts; ++i) {
         chain.SetBranchAddress(Form("fTrkTPCnSigma%s", help->pNames[i]), tpcNS[i].data());
-        chain.SetBranchAddress(Form("fTrkTOFnSigma%s", help->pNames[i]), tofNS[i].data());}
+        chain.SetBranchAddress(Form("fTrkTOFnSigma%s", help->pNames[i]), tofNS[i].data());
+    }
 
-    const Char_t* names[6] = {
-    "e^{+}e^{-}",
-    "#mu^{+}#mu^{-}",
-    "#pi^{+}#pi^{-}",
-    "K^{+}K^{-}",
-    "p^{+}p^{-}",
-    "K#pi"};
+    // channels: same-mass (e,e), (μ,μ), (π,π), (K,K), (p,p) and mixed (K,π)
+    const Char_t* names[6] = {"e^{+}e^{-}", "#mu^{+}#mu^{-}", "#pi^{+}#pi^{-}", "K^{+}K^{-}", "p^{+}p^{-}", "K#pi"};
     Int_t colors[6] = { kBlue, kAzure+1, kCyan+1, kGreen+2, kMagenta+2, kOrange+1 };
-
+    
     Long64_t nEntries = TMath::Min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
+
+    // output histograms
     TH2D* h2Mpt[6];
     for (Int_t i = 0; i < 6; ++i) {
         h2Mpt[i] = new TH2D(
@@ -87,22 +86,22 @@ void Invariant_Mass_vs_pt() {
 
     for (Long64_t ev = 0; ev < nEntries; ++ev) {
         chain.GetEntry(ev);
-        if (applyTOFEventfilter && (tofExpMom[0] < 0 || tofExpMom[1] < 0))
-            continue;
+
+        // require valid TOF momentum for both tracks
+        if (applyTOFEventfilter && (tofExpMom[0] < 0 || tofExpMom[1] < 0)) continue;
 
         for (Int_t j = 0; j < 5; ++j) {
-            if (applyTPCnSigmaFilter &&
-               (TMath::Abs(tpcNS[j][0]) > nSigmaTPC ||
-                TMath::Abs(tpcNS[j][1]) > nSigmaTPC)) continue;
-            if (applyTOFnSigmaFilter &&
-               (TMath::Abs(tofNS[j][0]) > nSigmaTOF ||
-                TMath::Abs(tofNS[j][1]) > nSigmaTOF)) continue;
+            // PID gates per track
+            if (applyTPCnSigmaFilter && (TMath::Abs(tpcNS[j][0]) > nSigmaTPC || TMath::Abs(tpcNS[j][1]) > nSigmaTPC)) continue;
+            if (applyTOFnSigmaFilter && (TMath::Abs(tofNS[j][0]) > nSigmaTOF || TMath::Abs(tofNS[j][1]) > nSigmaTOF)) continue;
 
+            // build energies using track momenta (GeV) and species mass (convert MeV->GeV)
             Float_t p1 = TMath::Sqrt(px[0]*px[0] + py[0]*py[0] + pz[0]*pz[0]);
             Float_t p2 = TMath::Sqrt(px[1]*px[1] + py[1]*py[1] + pz[1]*pz[1]);
             Float_t e1 = TMath::Sqrt(p1*p1 + help->pMasses[j]*help->pMasses[j]/1e6);
             Float_t e2 = TMath::Sqrt(p2*p2 + help->pMasses[j]*help->pMasses[j]/1e6);
 
+            // invariant mass M^2 = (E1+E2)^2 - |p1+p2|^2
             Float_t Esum = e1 + e2;
             Float_t pxsum = px[0] + px[1];
             Float_t pysum = py[0] + py[1];
@@ -122,23 +121,22 @@ void Invariant_Mass_vs_pt() {
             }
         }
 
+        // mixed Kπ hypothesis: decide assignment from PID (π-K vs K-π)
         Bool_t piK = true, Kpi = true;
         if (applyTPCnSigmaFilter) {
-            piK &= (TMath::Abs(tpcNS[2][0]) < nSigmaTPC &&
-                    TMath::Abs(tpcNS[3][1]) < nSigmaTPC);
-            Kpi &= (TMath::Abs(tpcNS[3][0]) < nSigmaTPC &&
-                    TMath::Abs(tpcNS[2][1]) < nSigmaTPC);
+            piK &= (TMath::Abs(tpcNS[2][0]) < nSigmaTPC && TMath::Abs(tpcNS[3][1]) < nSigmaTPC);
+            Kpi &= (TMath::Abs(tpcNS[3][0]) < nSigmaTPC && TMath::Abs(tpcNS[2][1]) < nSigmaTPC);
         }
         if (applyTOFnSigmaFilter) {
-            piK &= (TMath::Abs(tofNS[2][0]) < nSigmaTOF &&
-                    TMath::Abs(tofNS[3][1]) < nSigmaTOF);
-            Kpi &= (TMath::Abs(tofNS[3][0]) < nSigmaTOF &&
-                    TMath::Abs(tofNS[2][1]) < nSigmaTOF);
+            piK &= (TMath::Abs(tofNS[2][0]) < nSigmaTOF && TMath::Abs(tofNS[3][1]) < nSigmaTOF);
+            Kpi &= (TMath::Abs(tofNS[3][0]) < nSigmaTOF && TMath::Abs(tofNS[2][1]) < nSigmaTOF);
         }
-        if ((applyTPCnSigmaFilter || applyTOFnSigmaFilter) && (piK == Kpi))
-            continue;
 
-        Int_t i1 = piK ? 2 : 3;
+        // if both or neither pass, skip (ambiguous assignment)
+        if ((applyTPCnSigmaFilter || applyTOFnSigmaFilter) && (piK == Kpi)) continue;
+
+        // choose masses (MeV) -> energies (GeV)
+        Int_t i1 = piK ? 2 : 3; // 2: π, 3: K
         Int_t i2 = piK ? 3 : 2;
 
         TLorentzVector l1, l2;
@@ -151,17 +149,19 @@ void Invariant_Mass_vs_pt() {
         Double_t ivm = (l1 + l2).M();
         if (ivm <= 0) continue;
 
+        // fill histogram
         if (plotSysPt) {
             Double_t ptSys = TMath::Hypot(px[0]+px[1], py[0]+py[1]);
             h2Mpt[5]->Fill(ivm, ptSys);
-        } else {
+        } 
+        else {
             for (Int_t t = 0; t < 2; ++t) {
                 Double_t ptTrk = TMath::Hypot(px[t], py[t]);
                 h2Mpt[5]->Fill(ivm, ptTrk);
             }
         }
     }
-
+    // Plotting 
     TCanvas* c = new TCanvas("c", "");
     c->Print(outName + "["); 
     for (Int_t i = 0; i < 6; ++i) {

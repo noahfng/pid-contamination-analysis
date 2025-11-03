@@ -15,17 +15,24 @@
 
 class helper{
 public:
+    // I/O
     const Char_t* base_dir = "/Users/noahfng/SMI/UD_LHC23_pass4_SingleGap/0106/B";
+
+    // amount of tracks to consider per event
     const Int_t NtrkMax = 2;
 
+    // Species bookkeeping
     enum {nParts = 5};
     const Int_t colors[nParts]  = {kBlue, kGreen+2, kOrange+7, kMagenta+2, kCyan+1};
     const Char_t* dNames[2] = {"TPC", "TOF"};
     const Char_t* pNames[nParts] = {"El", "Mu", "Pi", "Ka", "Pr"};
     const Char_t* pCodes[nParts] = {"e", "#mu", "#pi", "K", "p"};
+
+    // Masses in MeV/c^2; charges in |e|
     const Double_t pMasses[nParts] = {0.51099895, 105.6583755,  139.57039, 493.677, 938.27208816};
     const Double_t pCharges[nParts] = {1, 1, 1, 1, 1};
 
+    // Resolution matrices r_{ref,hyp} used by getnSigma() (TPC/TOF)
     const Double_t resoTPC[nParts][nParts] = {
         {1.000, 0.080, 0.080, 0.085, 0.075},
         {0.090, 1.000, 0.080, 0.090, 0.085},
@@ -40,17 +47,19 @@ public:
         {0.0073, 0.012, 0.012, 1.000, 0.021},
         {0.0073, 0.012, 0.012, 0.014, 1.000}};
 
+    // beta = p / E  
     Double_t beta(Float_t mass, Float_t mom){
         return (mom / TMath::Sqrt(mass*mass + mom*mom));
     };
 
+    // ALEPH-like Bethe–Bloch response. p in MeV/c.
     Double_t getTPCSignal(Double_t p, Double_t mass, Double_t charge) {
-        const Double_t mMIP = 50.0;
+        const Double_t mMIP = 50.0; // overall scale
         const Double_t params[5] = {0.19310481, 4.26696118, 0.00522579, 2.38124907, 0.98055396};
-        const Double_t chFact = 2.3;
+        const Double_t chFact = 2.3; // dE/dx ~ |q|^{chFact}
 
         Double_t bg = p / mass;
-        if (bg < 0.05) return -999.;
+        if (bg < 0.05) return -999.; // guard against unphysical region
         Double_t bethe = mMIP
                    * bethe_bloch_aleph(bg,
                                        params[0], params[1], params[2],
@@ -58,24 +67,26 @@ public:
                    * TMath::Power(charge, chFact);
         return bethe >= 0 ? bethe : -999.;
     };
-  
+
+    // Compute nσ separation between ref and hyp for TPC or TOF at momentum mom (MeV/c).
     Double_t getnSigma(Double_t mom, TString det, Int_t ref, Int_t hyp){
         Double_t val = 0.;
-        if (det == dNames[0])
-        {
-        auto dRef = getTPCSignal(mom, pMasses[ref], pCharges[ref]);
-        auto dHyp = getTPCSignal(mom, pMasses[hyp], pCharges[hyp]);
-        auto rRef = resoTPC[ref][hyp];
-        val = (dHyp/dRef - 1.0) / rRef;
-        } else {
-        auto bRef = beta(pMasses[ref], mom);
-        auto bHyp = beta(pMasses[hyp], mom);
-        auto rRef = resoTOF[ref][hyp];
-        val = (bRef - bHyp) / (bHyp*bHyp * rRef);
+        if (det == dNames[0]){ // TPC
+            auto dRef = getTPCSignal(mom, pMasses[ref], pCharges[ref]);
+            auto dHyp = getTPCSignal(mom, pMasses[hyp], pCharges[hyp]);
+            auto rRef = resoTPC[ref][hyp];
+            val = (dHyp/dRef - 1.0) / rRef;
+        } 
+        else { // TOF (beta-based)
+            auto bRef = beta(pMasses[ref], mom);
+            auto bHyp = beta(pMasses[hyp], mom);
+            auto rRef = resoTOF[ref][hyp];
+            val = (bRef - bHyp) / (bHyp*bHyp * rRef);
         }
         return val;
     };
 
+    // Gaussian integral between a and b
     Double_t GaussIntegral(Double_t A, Double_t mu, Double_t sig, Double_t a, Double_t b) {
         const Double_t invsqrt2 = 1.0 / TMath::Sqrt(2.0);
         const Double_t t1 = (b - mu) * invsqrt2 / sig;
@@ -83,13 +94,14 @@ public:
         return A * sig * TMath::Sqrt(TMath::Pi()/2.0) * (TMath::Erf(t1) - TMath::Erf(t0));
     };
 
+     // Piecewise-integrated model: nG Gaussians + constant per histogram 
     inline Double_t ModelIntegral(Int_t h, Double_t a, Double_t b, const std::vector<Double_t>& par, Int_t nG, Int_t offA1, Int_t offA2, Int_t offM1, Int_t offM2, Int_t offS1, Int_t offS2, Int_t offP1, Int_t offP2) {
         const Int_t offA = (h == 0 ? offA1 : offA2);
         const Int_t offM = (h == 0 ? offM1 : offM2);
         const Int_t offS = (h == 0 ? offS1 : offS2);
         const Int_t offP = (h == 0 ? offP1 : offP2);
 
-        Double_t I = par[offP] * (b - a);  
+        Double_t I = par[offP] * (b - a); // constant background
         for (Int_t j = 0; j < nG; ++j) {
             const Double_t A   = par[offA + j];
             const Double_t mu  = par[offM + j];
@@ -99,6 +111,7 @@ public:
         return I;
     }
 
+    // Poisson deviance (2× log-likelihood ratio vs saturated model) and total counts
     std::pair<Double_t,Double_t> PoissonDeviance(TH1* h, Int_t whichHist, const std::vector<Double_t>& par, Int_t nG, Int_t offA1, Int_t offA2, Int_t offM1, Int_t offM2, Int_t offS1, Int_t offS2, Int_t offP1, Int_t offP2){
         Double_t D = 0.0, N = 0.0;
         const Int_t nb = h->GetNbinsX();
@@ -115,7 +128,7 @@ public:
     };
 
     enum ResoMode {kTPC, kTOF};
-
+    // Resolution vs momentum from file (graph name: nSigma{TPC|TOF}res<hypo>)
     Double_t getReso(ResoMode mode, const Char_t* hypo, Float_t mom) {
         static TFile* file = TFile::Open("UD_LHC23_pass4_SingleGap/nSigma_Resolution.root", "READ");
         if (!file || file->IsZombie()) {
@@ -134,6 +147,7 @@ public:
         return gr->Eval(mom);
     };
 
+    // Assemble expected vector for CM fit by integrating the model per CM bin
     TVectorD BuildExpectedVector(TH1* h1, TH1* h2, covarianceMatrix* cm, const std::vector<TH1D*>& histos, const std::vector<Double_t>& par, Int_t nG, Int_t offA1, Int_t offA2, Int_t offM1, Int_t offM2, Int_t offS1, Int_t offS2, Int_t offP1, Int_t offP2, Double_t nBins) {
         const auto bins2c4f = cm->bins2c4f(); 
         const Int_t nbins   = cm->observations().GetNrows();
@@ -150,6 +164,7 @@ public:
         return expected;
     };
 
+    // χ² = rᵀPr  with P = precomputed inverse covariance (from cm)
     Double_t Chi2_withCM(covarianceMatrix* cm, const TVectorD& expected) {
         const TVectorD y = cm->observations();
         TVectorD r = y; 
@@ -160,6 +175,7 @@ public:
         return r * tmp; 
     };
 
+    // Standalone χ² minimization for a single histogram and TF1
     inline void FitHistogramByChi2(TH1* hist, TF1* func, Double_t xlo, Double_t xhi) {
         func->SetRange(xlo, xhi);
         const Int_t nPar = func->GetNpar();
@@ -187,6 +203,7 @@ public:
         ROOT::Math::Functor fcn(chi2_fcn, nPar);
         minimizer->SetFunction(fcn);
 
+        // Seed parameters (+ respect TF1 limits)
         for (Int_t i = 0; i < nPar; ++i) {
             const Char_t* name = func->GetParName(i);
             Double_t      val  = func->GetParameter(i);
@@ -206,11 +223,13 @@ public:
         minimizer->SetMaxIterations(50000);
         minimizer->Minimize();
 
+        // Export result + errors
         const Double_t* xs = minimizer->X();
         for (Int_t i = 0; i < nPar; ++i) {
             func->SetParameter(i, xs[i]);
         }
-
+        
+        // Store χ²/ndf on TF1
         Double_t chi2 = 0;
         Int_t usedBins = 0;
         Int_t nbins = hist->GetNbinsX();
@@ -232,14 +251,15 @@ public:
         func->SetNDF(ndf);
     };
 
+    // Joint fit of two hists with common μ,σ; A2 enforced via A2 = A1*(σ1/σ2)
     inline void FitHistogramsExclCompByChi2(TH1* h1, TH1* h2, TF1* func, Int_t nG, covarianceMatrix* cm, const std::vector<TH1D*>& cmHists, const Double_t eigenThr, const Double_t nBins) {
         const Int_t nPar = 4*nG +2;
-        const Int_t offA1 = 0;         // Amplitudes for h1
-        const Int_t offA2 = nG;        // Amplitudes for h2
-        const Int_t offM  = 2*nG;      // means
-        const Int_t offS  = 3*nG;      // sigmas
-        const Int_t offP1 = 4*nG;      // constant background h1
-        const Int_t offP2 = 4*nG + 1;  // constant background h2
+        const Int_t offA1 = 0;         // A for h1
+        const Int_t offA2 = nG;        // A for h2
+        const Int_t offM  = 2*nG;      // common μ
+        const Int_t offS  = 3*nG;      // common σ
+        const Int_t offP1 = 4*nG;      // const bg for h1
+        const Int_t offP2 = 4*nG + 1;  // const bg for h2
 
         auto chi2_fcn = [&](const Double_t* par0) {
             std::vector<Double_t> par(par0, par0 + nPar);
@@ -250,10 +270,10 @@ public:
         };
 
         auto minimizer = std::unique_ptr<ROOT::Math::Minimizer>(ROOT::Math::Factory::CreateMinimizer("Minuit2",""));
-
         ROOT::Math::Functor fcn(chi2_fcn, nPar);
         minimizer->SetFunction(fcn);
 
+        // Seed + limits
         for (Int_t i = 0; i < nPar; ++i) {
             const char* name = func->GetParName(i);
             Double_t    val  = func->GetParameter(i);
@@ -283,19 +303,21 @@ public:
         func->SetNDF(ndf);
     }
 
+    // Joint fit with per-hist μ,σ; link A2 to A1 via σ ratio and fix A2 during minimization
     inline void FitHistogramsByChi2(TH1* h1, TH1* h2, TF1* func, Int_t nG, covarianceMatrix* cm, const std::vector<TH1D*>& cmHists, const Double_t eigenThr, const Double_t nBins) {
         const Int_t nPar = 6*nG +2;
-        const Int_t offA1 = 0;         // Amplitudes for h1
-        const Int_t offA2 = nG;        // Amplitudes for h2
-        const Int_t offM1 = 2*nG;      // means for h1
-        const Int_t offM2 = 3*nG;      // means for h
-        const Int_t offS1 = 4*nG;      // sigmas for h1
-        const Int_t offS2 = 5*nG;      // sigmas for
-        const Int_t offP1 = 6*nG;      // constant background for h1
-        const Int_t offP2 = 6*nG + 1;  // constant background for h2
+        const Int_t offA1 = 0;         // A for h1
+        const Int_t offA2 = nG;        // A for h2
+        const Int_t offM1 = 2*nG;      // μ for h1
+        const Int_t offM2 = 3*nG;      // μ for h2
+        const Int_t offS1 = 4*nG;      // σ for h1
+        const Int_t offS2 = 5*nG;      // σ for h2
+        const Int_t offP1 = 6*nG;      // const bg for h1
+        const Int_t offP2 = 6*nG + 1;  // const bg for h2
 
         auto chi2_fcn = [&](const Double_t* par0) {
             std::vector<Double_t> par(par0, par0 + nPar);
+            // enforce A2 from A1 and σ ratio during evaluation
             for (Int_t j = 0; j < nG; ++j) {
                 const Double_t s1 = std::max(par[offS1 + j], 1e-12);
                 const Double_t s2 = std::max(par[offS2 + j], 1e-12);
@@ -308,10 +330,10 @@ public:
         };
 
         auto minimizer = std::unique_ptr<ROOT::Math::Minimizer>(ROOT::Math::Factory::CreateMinimizer("Minuit2",""));
-
         ROOT::Math::Functor fcn(chi2_fcn, nPar);
         minimizer->SetFunction(fcn);
 
+         // Seed; fix A2 parameters (derived)
         for (Int_t i = 0; i < nPar; ++i) {
             const char* name = func->GetParName(i);
             Double_t    val  = func->GetParameter(i);
@@ -335,11 +357,13 @@ public:
         minimizer->SetMaxIterations(50000);
         minimizer->Minimize();
 
+        // Export best-fit + errors
         for (Int_t i = 0; i < nPar; ++i) {
             func->SetParameter(i, minimizer->X()[i]);
             func->SetParError(i, TMath::Sqrt(std::max(0.0, minimizer->CovMatrix(i, i))));
         }
 
+        // Fill derived A2 and zero its error (since it’s constrained)
         for (Int_t j = 0; j < nG; ++j) {
             const double s1 = std::max(func->GetParameter(offS1 + j), 1e-12);
             const double s2 = std::max(func->GetParameter(offS2 + j), 1e-12);
@@ -355,6 +379,7 @@ public:
         func->SetNDF(ndf);
     }
 private:
+    // ALEPH parameterization; input γβ, returns normalized dE/dx shape
     Double_t bethe_bloch_aleph(Double_t bg, Double_t p1, Double_t p2, Double_t p3, Double_t p4, Double_t p5) {
         Double_t beta = bg / TMath::Sqrt(1.0 + bg*bg);
         Double_t aa   = TMath::Power(beta, p4);
