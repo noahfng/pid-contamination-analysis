@@ -2,6 +2,7 @@
 #include <vector>
 #include <cmath>
 #include <limits>
+#include <sstream>
 
 #include "TROOT.h"
 #include "TStyle.h"
@@ -15,43 +16,56 @@
 #include "TPaveText.h"
 #include "TSystem.h"
 
-#include <AddTrees.h>
-#include <helpers.h>
+#include <AddTrees.h>   // project-specific: file discovery/chain fill
+#include <helpers.h>    // project-specific: masses, charges, colors, Bethe–Bloch
 
 void nSigma_Plot(){
     auto help = new helper();
     const Int_t nParts = helper::nParts;
     const Int_t NtrkMax = help->NtrkMax;
-    const Int_t   nBins   = 500;
-    const Double_t xMin   = -10.0, xMax = 10.0;
-    const Double_t pStart = 0.45, pEnd = 0.55, step = 0.1;
-    const Double_t muWindow = 0.5;
-    const Double_t mergeDistanceFactor = 1.0;
+
+    // histogram & slicing config
+    const Int_t nBins = 500;
+    const Double_t xMin = -10.0, xMax = 10.0;
+    const Double_t pStart = 0.45, pEnd = 0.55; // momentum slicing (GeV/c)
+    const Double_t step = 0.1; // slice width (GeV/c)
+
+    // peak finding & fitting config
+    const Double_t muWindow = 0.5; // ±window for μ during fit init
+    const Double_t mergeDistanceFactor = 1.0; // merge seeds if |Δμ| < f·max(σ)
     const Double_t nEntriesLimit = 1e7;
-    const Bool_t TOFfilter = false;
-    const Bool_t KaExclusion = false;
-    const Bool_t PrExclusion = false;
+
+    // event/track filters
+    const Bool_t TOFfilter = false; // require TOF info
+    const Bool_t KaExclusion = false; // veto |nσ_K^TOF|<3
+    const Bool_t PrExclusion = false; // veto |nσ_p^TOF|<3
+
+    // what to draw
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
-    const Bool_t PeakZoom = false;
-    const Bool_t manualPredictPeaks = true;
-    const std::array<Bool_t, nParts> doPid = {{true, false, false, false, false}};
+    const Bool_t PeakZoom = false; // autoset x-range around predicted peaks
+
+    // seed strategy
+    const Bool_t manualPredictPeaks = true; // interactive seeding (means/sigmas/amps); else auto from predicted model
+    const std::array<Bool_t, nParts> doPid = {{true, false, false, false, false}}; // which ref species to plot
     using PeakPars = std::array<Double_t,4>;
 
+    // batch only in auto mode; interactive needs windows
     gROOT->SetBatch(!manualPredictPeaks);
     gStyle->SetOptStat(1);
 
+    // input data chain
     TChain chain("twotauchain");
     AddTrees(chain, help->base_dir);
 
     chain.SetBranchStatus("*", 0);
     chain.SetBranchStatus("fTrkTPCinnerParam", 1);
     chain.SetBranchStatus("fTrkTOFexpMom", 1);
-
     for (Int_t i = 0; i < nParts; ++i){
         chain.SetBranchStatus(Form("fTrkTPCnSigma%s", help->pNames[i]), 1);
         chain.SetBranchStatus(Form("fTrkTOFnSigma%s", help->pNames[i]), 1);
     }
+
     std::vector<Float_t> inner(NtrkMax);
     std::vector<Float_t> tofExpMom(NtrkMax);
     std::vector<std::vector<Float_t>> tpcNS(nParts, std::vector<Float_t>(NtrkMax));
@@ -59,7 +73,6 @@ void nSigma_Plot(){
 
     chain.SetBranchAddress("fTrkTPCinnerParam", inner.data());
     chain.SetBranchAddress("fTrkTOFexpMom", tofExpMom.data());
-
     for (Int_t i = 0; i < nParts; ++i) {
         chain.SetBranchAddress(Form("fTrkTPCnSigma%s", help->pNames[i]), tpcNS[i].data());
         chain.SetBranchAddress(Form("fTrkTOFnSigma%s", help->pNames[i]), tofNS[i].data());
@@ -67,13 +80,17 @@ void nSigma_Plot(){
 
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
 
+    // lambda to draw nσ histograms (TPC or TOF)
     auto drawNSigma = [&](Bool_t isTPCmode) {
+        // momentum bins for this detector mode
         const Double_t pMin   = isTPCmode ? pStart : std::max(pStart, 0.4);
         const Int_t    nSteps = Int_t(std::floor((pEnd - pMin) / step + 0.5));
         std::vector<Double_t> pEdges(nSteps+1);
         for (Int_t i = 0; i <= nSteps; ++i) pEdges[i] = pMin + i * step;
         
         TString suffix = isTPCmode ? "TPC" : "TOF";
+
+        // book per-slice histograms of nσ (one set per reference species)
         std::vector<std::vector<TH1D*>> hists(nParts, std::vector<TH1D*>(nSteps,nullptr));
         for (Int_t pid = 0; pid < nParts; ++pid) {
             if (!doPid[pid]) continue;
@@ -90,37 +107,42 @@ void nSigma_Plot(){
                 hists[pid][i]->SetLineColor(kBlack);
             }
         }
+
+        // fill histograms
         for (Long64_t ev = 0; ev < nEntries; ++ev) {
             chain.GetEntry(ev);
             for (Int_t t = 0; t < NtrkMax; ++t) {
-                if (tofExpMom[t] < 0 && (!isTPCmode || TOFfilter)) 
-                    continue;
-                if (KaExclusion && !TMath::IsNaN(tofNS[3][t]) && TMath::Abs(tofNS[3][t]) < 3.0) 
-                    continue;
-                if (PrExclusion && !TMath::IsNaN(tofNS[4][t]) && TMath::Abs(tofNS[4][t]) < 3.0) 
-                    continue;
-                Double_t pG = inner[t];
-                Int_t bin = std::lower_bound(pEdges.begin(), pEdges.end(), pG)
-                        - pEdges.begin() - 1;
-                if (bin < 0 || bin >= nSteps) 
-                    continue;
+                // TOF validity: in TOF mode always require; in TPC mode only if TOFfilter=true
+                if (tofExpMom[t] < 0 && (!isTPCmode || TOFfilter)) continue;
+                if (KaExclusion && !TMath::IsNaN(tofNS[3][t]) && TMath::Abs(tofNS[3][t]) < 3.0) continue;
+                if (PrExclusion && !TMath::IsNaN(tofNS[4][t]) && TMath::Abs(tofNS[4][t]) < 3.0) continue;
+                
+                Double_t pG = inner[t]; // assumed GeV/c
+                Int_t bin = std::lower_bound(pEdges.begin(), pEdges.end(), pG) - pEdges.begin() - 1;
+                if (bin < 0 || bin >= nSteps) continue;
+
                 for (Int_t pid = 0; pid < nParts; ++pid) {
                     if (!doPid[pid]) continue;
                     Float_t val = isTPCmode ? tpcNS[pid][t] : tofNS[pid][t];
-                    if (!TMath::IsNaN(val))
-                        hists[pid][bin]->Fill(val);
+                    if (!TMath::IsNaN(val)) hists[pid][bin]->Fill(val);
                 }
             }
         }  
+
+        // for each reference species, loop momentum slices and fit multi-Gaussian + constant background
         for (Int_t ref = 0; ref < nParts; ++ref) {
             if (!doPid[ref]) continue;
             TString pdfName = Form("nSigma%s_%s.pdf", suffix.Data(), help->pCodes[ref]);
+
             TCanvas* c = new TCanvas("c","", 950, 700);
             c->SetLeftMargin(0.15);
             c->SetLogy();
             c->Print(pdfName + "[");
+            
             for (Int_t i = 0; i < nSteps; ++i) {
                 TH1D* h1 = hists[ref][i];
+
+                // seed peaks from physics model (μ,σ) and histogram amplitude at μ
                 struct Peak {Double_t A, mu, sigma; Int_t id; std::vector<Int_t> merged_ids;Bool_t alwaysSeparate = false;};
                 std::vector<Peak> seeds;
                 Double_t sliceMin = pEdges[i];
@@ -131,20 +153,19 @@ void nSigma_Plot(){
                     Double_t hypMass = help->pMasses[hyp];
                     Double_t sigma0, mu;
                     if (isTPCmode) {
+                        // TPC: μ = (dHyp/dRef -1)/resoRef ; σ ∝ (resoHyp/resoRef)*(dHyp/dRef)
                         Double_t dRef = help->getTPCSignal(pMid * 1000, help->pMasses[ref], 1.0);
                         Double_t dHyp = help->getTPCSignal(pMid * 1000, hypMass, 1.0);
-                        if (dRef < 0 || dHyp < 0) 
-                            continue;
-
+                        if (dRef < 0 || dHyp < 0) continue;
                         Double_t resoHyp = help->resoTPC[hyp][ref];
                         Double_t resoRef = help->resoTPC[ref][hyp];
                         sigma0 = (resoHyp / resoRef) * (dHyp / dRef);
                         mu     = (dHyp/dRef - 1.0) / resoRef;
                     }
                     else {
+                        // TOF: μ = (β_ref - β_hyp)/(β_hyp^2 * resoRef) ; σ ∝ (resoHyp/resoRef)*(1/β_hyp^2)
                         Double_t bRef = help->beta(help->pMasses[ref], pMid*1000);
                         Double_t bHyp = help->beta(help->pMasses[hyp], pMid*1000);
-
                         Double_t resoHyp = help->resoTOF[hyp][ref];
                         Double_t resoRef = help->resoTOF[ref][hyp];
                         sigma0 = (resoHyp / resoRef) * (1.0 / (bHyp * bHyp));
@@ -152,13 +173,12 @@ void nSigma_Plot(){
                     }
 
                     if (mu < xMin || mu > xMax) continue;
-
                     Int_t    bin = h1->FindBin(mu);        
                     Double_t amp = h1->GetBinContent(bin);
-
                     seeds.push_back({amp, mu, sigma0, hyp, {hyp}, false});
                 }
 
+                // optionally merge μ and π seeds into a single seed (keeps IDs in merged_ids)
                 Peak muPiCombined{0,0,0,-1,{},false};
                 Bool_t sawMu = false, sawPi = false;
                 for (auto it = seeds.begin(); it != seeds.end();) {
@@ -168,16 +188,12 @@ void nSigma_Plot(){
                             sawMu = true;
                         }
                         else {
+                            // merge by conserving integral and mean/variance
                             Double_t I_old = muPiCombined.A * muPiCombined.sigma * TMath::Sqrt(2*TMath::Pi());
                             Double_t I_new = it->A * it->sigma * TMath::Sqrt(2*TMath::Pi());
                             Double_t I_tot = I_old + I_new;
                             Double_t mu_eff = (I_old*muPiCombined.mu + I_new*it->mu) / I_tot;
-                            Double_t var_eff = (
-                                I_old*(muPiCombined.sigma*muPiCombined.sigma 
-                                    + (muPiCombined.mu-mu_eff)*(muPiCombined.mu-mu_eff))
-                            + I_new*(it->sigma*it->sigma 
-                                    + (it->mu-mu_eff)*(it->mu-mu_eff))
-                            ) / I_tot;
+                            Double_t var_eff = (I_old*(muPiCombined.sigma*muPiCombined.sigma + (muPiCombined.mu-mu_eff)*(muPiCombined.mu-mu_eff)) + I_new*(it->sigma*it->sigma + (it->mu-mu_eff)*(it->mu-mu_eff))) / I_tot;
                             muPiCombined.A     = I_tot / (muPiCombined.sigma * TMath::Sqrt(2*TMath::Pi()));
                             muPiCombined.mu    = mu_eff;
                             muPiCombined.sigma = TMath::Sqrt(var_eff);
@@ -191,7 +207,8 @@ void nSigma_Plot(){
                     }
                 }
                 if (sawMu || sawPi) {
-                    muPiCombined.id = 1;
+                    muPiCombined.id = 1; // // tag as "μ/π"
+                    // never merge away the reference species peak
                     muPiCombined.alwaysSeparate = std::find(muPiCombined.merged_ids.begin(), muPiCombined.merged_ids.end(), ref) != muPiCombined.merged_ids.end();
                     seeds.push_back(muPiCombined);
                 }
@@ -202,6 +219,7 @@ void nSigma_Plot(){
                     }
                 }
 
+                // merge neighboring seeds if close in μ (unless flagged alwaysSeparate)
                 std::sort(seeds.begin(), seeds.end(), [](auto &a, auto &b){ return a.mu < b.mu; });
                 std::vector<Peak> merged;
                 for (auto &s : seeds) {
@@ -225,9 +243,8 @@ void nSigma_Plot(){
                     }
                 }
 
-                Double_t x_low  = xMin;
-                Double_t x_high = xMax;
-                
+                 // optional x-range zoom around predicted peaks
+                Double_t x_low  = xMin, x_high = xMax;
                 if (PeakZoom) {
                     const Double_t Nsigma = 8.0;
                     if (!merged.empty()) {
@@ -245,6 +262,7 @@ void nSigma_Plot(){
                     h1->GetXaxis()->SetRangeUser(x_low, x_high);
                 }
 
+                // seeding mode: manual (interactive) or automatic (from merged)
                 Int_t manualNGauss = 0;
                 std::vector<Double_t> manualMeans, manualSigmas, manualAmps;
                 if (manualPredictPeaks) {
@@ -291,6 +309,7 @@ void nSigma_Plot(){
                 }
                 if (nG < 1) { c->Print(pdfName); delete h1; continue; }
                 
+                // build sum-of-Gaussians + constant background and set parameter limits
                 Double_t fit_lo = x_low;
                 Double_t fit_hi = x_high;
                 std::ostringstream form;
@@ -335,9 +354,14 @@ void nSigma_Plot(){
                         sum->SetParameter(3*i+2, p.sigma);
                     }
                 }
+
+                // χ² fit (custom helper uses bin-by-bin errors, respects TF1 limits)
                 help->FitHistogramByChi2(h1, sum, x_low, x_high);
+
+                // draw: data, total fit, components, labels
                 h1->Draw("E1");
                 Double_t yMax1 = 1.25 * h1->GetMaximum();
+
                 TLegend* leg = new TLegend(0, 0.10, 0.15, 0.30);
                 leg->SetBorderSize(0);
                 leg->SetFillStyle(0);
@@ -346,6 +370,7 @@ void nSigma_Plot(){
                 sum->SetNpx(500); 
                 sum->Draw("same");
 
+                // vertical lines at predicted/entered μ
                 if (!manualPredictPeaks) {
                     for (const auto &pk : merged) {
                         Double_t mu = pk.mu;
@@ -363,7 +388,8 @@ void nSigma_Plot(){
                         l->Draw();
                     }
                 }
-                    
+                
+                // individual Gaussian components + legend labels
                 for (Int_t i = 0; i < nG; ++i) {
                     if (sum->GetParameter(3*i) <= 0) continue;
                     TF1 *g = new TF1(Form("g_%d_%d", ref, i), "gaus", x_low, x_high);
@@ -395,11 +421,13 @@ void nSigma_Plot(){
                                 label += help->pCodes[ids[j]];
                             }
                         }
-                } else {
+                    } else {
                     label = Form("Peak %d", i+1);
+                    }
+                    leg->AddEntry(g, label, "l");
                 }
-                leg->AddEntry(g, label, "l");
-                }
+
+                // χ²/ndf box
                 TPaveText *pt=new TPaveText(0.02,0.90,0.25,0.99,"NDC");
                 pt->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
                 pt->SetFillColorAlpha(0,0); 
@@ -413,6 +441,7 @@ void nSigma_Plot(){
         }
     };
 
+    // run for selected detectors
     if (plotTPC) drawNSigma(true);     
     if (plotTOF) drawNSigma(false);  
 }

@@ -12,8 +12,8 @@
 #include "TString.h" 
 #include "TFile.h"    
 
-#include <AddTrees.h>
-#include <helpers.h>
+#include <AddTrees.h>   // project-specific: file discovery/chain fill
+#include <helpers.h>    // project-specific: masses, charges, colors, Bethe–Bloch
 
 void nSigma_vs_p_Plot() {
     auto help = new helper();
@@ -21,21 +21,26 @@ void nSigma_vs_p_Plot() {
     gStyle->SetOptStat(0);
     gStyle->SetPalette(kRainBow);
 
-    const Double_t yMin   = -20.0, yMax = 30.0;
-    const Bool_t plotTPC = false;
-    const Bool_t plotTOF = true;
-    const Bool_t KaExclusion = false;
-    const Bool_t PrExclusion = false;
-    const Bool_t tofFilter = false;
+    // basic config
+    const Bool_t plotTPC = false; // draw TPC nσ vs p
+    const Bool_t plotTOF = true; // draw TOF nσ vs p
+    const Bool_t KaExclusion = false; // TOF-based Kaon veto
+    const Bool_t PrExclusion = false; // TOF-based Proton veto
+    const Bool_t tofFilter = false; // require TOF info
     const Double_t nEntriesLimit = 1e7;
     const Int_t npoints = 500;
+    const Double_t yMin   = -20.0, yMax = 30.0;
     const Double_t pMin = 0.1, pMax = 10.0;
+
     const Int_t nParts = helper::nParts;
     auto NtrkMax = help->NtrkMax;
-    const std::array<Bool_t, nParts> doPid = {{false, false, false, true, false}};
+    // choose which PID reference species to plot data for (e, μ, π, K, p)
+    const std::array<Bool_t, nParts> doPid = {{false, false, false, true, false}}; 
 
+    // input data chain
     TChain chain("twotauchain");
     AddTrees(chain, help->base_dir);
+
     chain.SetBranchStatus("*", 0);
     chain.SetBranchStatus("fTrkTPCinnerParam", 1);
     chain.SetBranchStatus("fTrkTOFexpMom", 1);
@@ -43,12 +48,12 @@ void nSigma_vs_p_Plot() {
         chain.SetBranchStatus(Form("fTrkTPCnSigma%s", help->pNames[i]), 1);
         chain.SetBranchStatus(Form("fTrkTOFnSigma%s", help->pNames[i]), 1);
     }
+
     std::vector<Float_t> inner(NtrkMax);
-    std::vector<Float_t> tpcSignal(NtrkMax);
     std::vector<Float_t> tofExpMom(NtrkMax);
     std::vector<std::vector<Float_t>> tpcNS(nParts, std::vector<Float_t>(NtrkMax));
     std::vector<std::vector<Float_t>> tofNS(nParts, std::vector<Float_t>(NtrkMax));
-    chain.SetBranchAddress("fTrkTPCsignal", tpcSignal.data());
+
     chain.SetBranchAddress("fTrkTPCinnerParam", inner.data());
     chain.SetBranchAddress("fTrkTOFexpMom", tofExpMom.data());
 
@@ -56,11 +61,14 @@ void nSigma_vs_p_Plot() {
         chain.SetBranchAddress(Form("fTrkTPCnSigma%s", help->pNames[i]), tpcNS[i].data());
         chain.SetBranchAddress(Form("fTrkTOFnSigma%s", help->pNames[i]), tofNS[i].data());
     }
+    
+    // momentum grid for model curves (GeV/c)
     Double_t pgrid[npoints];
     for (Int_t i = 0; i < npoints; ++i) {
         pgrid[i] = pMin + i*(pMax - pMin)/(npoints - 1);
     }
 
+    // histogram setup
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
     TH2D* histTPC[nParts];
     TH2D* histTOF[nParts];
@@ -77,11 +85,12 @@ void nSigma_vs_p_Plot() {
           1000, pMin, pMax, 1000, yMin, yMax
         );
     }
-
+    
+    // fill histograms
     for (Long64_t ev = 0; ev < nEntries; ++ev) {
         chain.GetEntry(ev);
         for (Int_t tr = 0; tr < NtrkMax; ++tr) {
-            Float_t p = inner[tr];
+            Float_t p = inner[tr]; // GeV/c
             if (p <= 0) continue;
             if (KaExclusion && !TMath::IsNaN(tofNS[3][tr]) && TMath::Abs(tofNS[3][tr]) < 3.0) 
                 continue;
@@ -96,10 +105,10 @@ void nSigma_vs_p_Plot() {
             }
         }
     }
-
+    
+    // Build model nσ curves (per ref species vs all hypotheses
     TGraph* tpcCurves[nParts][nParts];
     TGraph* tofCurves[nParts][nParts];
-
     for (Int_t ref = 0; ref < nParts; ++ref) {
         if (!doPid[ref]) continue;
         for (Int_t hyp = 0; hyp < nParts; ++hyp) {
@@ -110,6 +119,7 @@ void nSigma_vs_p_Plot() {
                 Double_t pg = pgrid[ip];
                 if (pg < 0.1) continue;
 
+                // helper expects momentum in MeV/c → multiply by 1000
                 if (plotTPC) {
                     Double_t ns = help->getnSigma(pg * 1000., help->dNames[0], ref, hyp);
                     xv_tpc.push_back(pg);
@@ -134,7 +144,8 @@ void nSigma_vs_p_Plot() {
             }
         }
     }
-    
+
+    // Draw (one PDF per detector)
     TCanvas* c = new TCanvas("c", "", 800, 600);
     TLegend* leg = new TLegend(0, 0.10, 0.15, 0.30);
     leg->SetBorderSize(0);
@@ -147,7 +158,8 @@ void nSigma_vs_p_Plot() {
     c->SetLogx();
 
     for (Int_t i = 0; i < 5; ++i) {
-        if (!doPid[i]) continue;  
+        if (!doPid[i]) continue;
+          
         if (plotTPC) {
             leg->Clear();
             for (Int_t hyp = 0; hyp < 5; ++hyp) leg->AddEntry(tpcCurves[i][hyp], help->pCodes[hyp], "l");
