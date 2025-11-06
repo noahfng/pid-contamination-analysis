@@ -19,8 +19,8 @@
 #include "TSystem.h"
 #include "TH1D.h"
 
-#include <AddTrees.h>
-#include <helpers.h>
+#include <AddTrees.h>   // project-specific: file discovery/chain fill
+#include <helpers.h>    // project-specific: masses, charges, colors, Bethe–Bloch
 #include <covarianceMatrix.h>
 
 struct ndJsonLogger {

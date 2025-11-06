@@ -37,6 +37,12 @@ FUNC="nSigma_Plot_ExclComp"
 BASE_OUTDIR="overnight_runs_ExlComp"
 MACRO_DIR=$(cd "$(dirname "$SRC")" && pwd)
 
+SESSION_TS=$(date +"%Y-%m-%dT%H:%M:%S%z")   
+LOG_DIR="${BASE_OUTDIR}/logs"
+mkdir -p "$LOG_DIR"
+MASTER_LOG="${LOG_DIR}/session-${SESSION_TS//[:+]/_}.log"
+exec > >(tee -a "$MASTER_LOG") 2>&1
+
 
 command -v root >/dev/null 2>&1 || { echo "ERROR: 'root' not in PATH"; exit 1; }
 [[ -f "$SRC" ]] || { echo "ERROR: Macro not found: $SRC"; exit 1; }
