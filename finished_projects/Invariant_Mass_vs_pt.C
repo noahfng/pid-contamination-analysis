@@ -16,19 +16,19 @@ void Invariant_Mass_vs_pt() {
     gStyle->SetPalette(kRainBow);
 
     // basic config
-    const Double_t nEntriesLimit = 1e6;  
-    const Bool_t applyTPCnSigmaFilter = false; // TPC PID gate
+    const Double_t nEntriesLimit = 1e10;  
+    const Bool_t applyTPCnSigmaFilter = true; // TPC PID gate
     const Float_t nSigmaTPC = 3.0;
-    const Bool_t applyTOFEventfilter = false; // require valid TOF momentum for both tracks
-    const Bool_t applyTOFnSigmaFilter = false; // TOF PID gate
+    const Bool_t applyTOFEventfilter = true; // require valid TOF momentum for both tracks
+    const Bool_t applyTOFnSigmaFilter = true; // TOF PID gate
     const Float_t nSigmaTOF = 3.0;
 
     // if both true, the 2D plot will show plotSysPt 
     const Bool_t plotSysPt = true; // pair pT: |pT(0)+pT(1)| → 1 entry/event
     const Bool_t plotTrackPt = false; // track pT: |pT(t)| for t=0,1 → 2 entries/event
 
-    const Int_t nMassBins = 100; const Float_t massMax = 5.0; // GeV/c^2
-    const Int_t   nPtBins = 100; const Float_t ptMax = 5.0; // GeV/c
+    const Int_t nMassBins = 1000; const Float_t massMax = 10.0; // GeV/c^2
+    const Int_t   nPtBins = 1000; const Float_t ptMax = 10.0; // GeV/c
 
     const Int_t nParts = helper::nParts;
     const Int_t NtrkMax = help->NtrkMax;

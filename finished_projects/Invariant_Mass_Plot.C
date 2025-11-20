@@ -20,16 +20,16 @@ void Invariant_Mass_Plot() {
     gStyle->SetOptStat(1);
 
     // basic config  
-    const Bool_t applyTPCnSigmaFilter = true; // TPC PID gate
+    const Bool_t applyTPCnSigmaFilter = false; // TPC PID gate
     const Float_t nSigmaTPC = 3.0; 
     const Bool_t applyTOFEventfilter = false; // require TOF info
     const Bool_t applyTOFnSigmaFilter = false; // TOF PID gate
     const Bool_t applyNorm = false; // normalize histograms by entries
     const Float_t nSigmaTOF = 3.0;
 
-    const Double_t nEntriesLimit = 1e7;
-    const Int_t   nPtBins = 100;
-    const Float_t ptMax   = 5.0;
+    const Double_t nEntriesLimit = 1e10;
+    const Int_t   nPtBins = 1000;
+    const Float_t ptMax   = 10.0;
 
     const Int_t nParts = helper::nParts;
     const Int_t NtrkMax = help->NtrkMax;
