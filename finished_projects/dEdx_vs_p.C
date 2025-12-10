@@ -17,11 +17,11 @@ void dEdx_vs_p() {
     gStyle->SetNumberContours(256);
 
     // basic config    
-    const Double_t nEntriesLimit = 1e10;
+    const Double_t nEntriesLimit = 1e7;
     const Int_t nPoints = 500;
     const Bool_t KaExclusion = false; // TOF-based Kaon veto
     const Bool_t PrExclusion = false; // TOF-based Proton veto
-    const Bool_t tofFilter = false; // require TOF info
+    const Bool_t requireTOF = (KaExclusion || PrExclusion); // automatically require TOF info if any TOF-based veto is used
     const Double_t pMin = 0.3, pMax = 10.0; // GeV/c range for axes/curves
     
     const Int_t nParts = helper::nParts;
@@ -59,7 +59,7 @@ void dEdx_vs_p() {
     for (Long64_t i = 0; i < nEntries; ++i) {
         chain.GetEntry(i);
         for (Int_t t = 0; t < NtrkMax; ++t) {
-            if (expMom[t] < 0 && tofFilter)
+            if (expMom[t] < 0 && requireTOF)
                 continue;
             if (inner[t] <= 0 || signal[t] <= 0)
                 continue;
