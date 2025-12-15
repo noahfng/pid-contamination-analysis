@@ -118,25 +118,29 @@ void Invariant_Mass_Plot() {
             if (M2 > 0) {
                 hM[j]->Fill(std::sqrt(M2));}
         }
-        // mixed Kπ case
+        // mixed Kπ case: fill both assignments (track0=π,track1=K AND track0=K,track1=π)
         {
-            Int_t i1 = 2; // π
-            Int_t i2 = 3; // K
+            const Int_t iPi = 2; // π
+            const Int_t iK  = 3; // K
 
-            TLorentzVector tl1, tl2;
-            Double_t p1 = std::sqrt(px[0]*px[0] + py[0]*py[0] + pz[0]*pz[0]);
-            Double_t p2 = std::sqrt(px[1]*px[1] + py[1]*py[1] + pz[1]*pz[1]);
-            Double_t m1 = help->pMasses[i1]/1e3;
-            Double_t m2 = help->pMasses[i2]/1e3;
-            Double_t e1 = std::sqrt(p1*p1 + m1*m1);
-            Double_t e2 = std::sqrt(p2*p2 + m2*m2);
+            auto fillKpi = [&](int idxPi, int idxK) {
+                const double pPi = std::sqrt(px[idxPi]*px[idxPi] + py[idxPi]*py[idxPi] + pz[idxPi]*pz[idxPi]);
+                const double pK  = std::sqrt(px[idxK]*px[idxK] + py[idxK]*py[idxK] + pz[idxK]*pz[idxK]);
 
-            tl1.SetPxPyPzE(px[0], py[0], pz[0], e1);
-            tl2.SetPxPyPzE(px[1], py[1], pz[1], e2);
-            TLorentzVector tlSum = tl1 + tl2;
-            Double_t ivm = tlSum.M();
-            if (ivm > 0)
-                hM[5]->Fill(ivm);
+                // masses are in MeV -> convert consistently via m^2 / 1e6 (GeV^2)
+                const double ePi = std::sqrt(pPi*pPi + (help->pMasses[iPi]*help->pMasses[iPi])/1e6);
+                const double eK  = std::sqrt(pK*pK + (help->pMasses[iK]*help->pMasses[iK])/1e6);
+
+                TLorentzVector vPi, vK;
+                vPi.SetPxPyPzE(px[idxPi], py[idxPi], pz[idxPi], ePi);
+                vK.SetPxPyPzE(px[idxK], py[idxK], pz[idxK], eK);
+
+                const double m = (vPi + vK).M();
+                if (m > 0.0) hM[5]->Fill(m);
+            };
+
+            fillKpi(0, 1);
+            fillKpi(1, 0);
         }
     }
     
