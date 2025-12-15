@@ -150,7 +150,7 @@ void nSigma_vs_p_Plot() {
 
     // Draw (one PDF per detector)
     TCanvas* c = new TCanvas("c", "", 800, 600);
-    TLegend *leg = new TLegend(0.86, 0.70, 0.90, 0.90);
+    TLegend *leg = new TLegend(0.84, 0.70, 0.88, 0.90);
     leg->SetBorderSize(1); 
     leg->SetMargin(0.45);
     leg->SetFillColorAlpha(kWhite, 0.8);
