@@ -13,3 +13,5 @@
 /ExclComp-Plots/
 
 /*.ndjson
+
+**/.DS_Store
