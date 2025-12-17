@@ -209,16 +209,44 @@ static inline std::vector<Double_t> getenv_vecd(const Char_t* k, std::vector<Dou
   return out.empty()? fallback : out;
 }
 
+static inline std::string trim_copy(std::string s){
+  auto isws = [](unsigned char c){ return std::isspace(c); };
+  while(!s.empty() && isws(s.front())) s.erase(s.begin());
+  while(!s.empty() && isws(s.back()))  s.pop_back();
+  return s;
+}
+
+static inline std::vector<TString> getenv_labels(const Char_t* k, const std::vector<TString>& fallback)
+{
+  const Char_t* v = gSystem->Getenv(k);
+  if(!v || !*v) return fallback;
+
+  std::string raw(v);
+  // allow either ',' or '|'
+  for (auto &ch : raw) if (ch=='|') ch=',';
+
+  std::vector<TString> out;
+  std::stringstream ss(raw);
+  std::string tok;
+  while(std::getline(ss, tok, ',')){
+    tok = trim_copy(tok);
+    if(tok.empty()) continue;
+    out.push_back(TString(tok));
+  }
+  return out.empty() ? fallback : out;
+}
+
+
 void nSigma_Plot_ExclComp(){
     auto help = new helper();
     const Int_t nParts = helper::nParts;
     const Int_t NtrkMax = help->NtrkMax;
     const Int_t   nBins   = 500;
-    const Double_t xMin   = getenv_double("XMIN", -12.0), xMax = getenv_double("XMAX", 10.0);
-    const Double_t pStart = getenv_double("PSTART", 0.45), pEnd = getenv_double("PEND", 0.55), step = 0.1;
+    const Double_t xMin   = getenv_double("XMIN", -10.0), xMax = getenv_double("XMAX", 10.0);
+    const Double_t pStart = getenv_double("PSTART", 0.35), pEnd = getenv_double("PEND", 0.45), step = 0.1;
     const Double_t muWindow = 2.0;
     const Double_t mergeDistanceFactor = 1.0;
-    const Double_t nEntriesLimit = 1e12; 
+    const Double_t nEntriesLimit = 1e7; 
     const Bool_t FitKaonExclComp = getenv_bool("FITKAONEXCLCOMP", true);
     const Bool_t FitProtonExclComp = getenv_bool("FITPROTONEXCLCOMP", false);
     const Bool_t plotTPC = true;
@@ -230,10 +258,10 @@ void nSigma_Plot_ExclComp(){
     const Bool_t plotCM = false;
     const std::array<Bool_t, nParts> doPid = {{true, false, false, false, false}};
     using PeakPars = std::array<Double_t,4>;
-    const std::vector<Double_t> sigmaExclList = {2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
+    const std::vector<Double_t> sigmaExclList = {3.0};
 
     gROOT->SetBatch(!manualPredictPeaks);
-    gStyle->SetOptStat(1);
+    gStyle->SetOptStat(0);
 
     TChain chain("twotauchain");
     AddTrees(chain, help->base_dir);
@@ -272,10 +300,7 @@ void nSigma_Plot_ExclComp(){
         for (Int_t i = 0; i <= nSteps; ++i) pEdges[i] = pMin + i * step;
         TString suffix = isTPCmode ? "TPC" : "TOF";    
         enum ExclType{KaonExcl = 3, ProtExcl = 4};
-        std::vector<std::pair<ExclType, Bool_t>> modes = {
-        {KaonExcl,  FitKaonExclComp},
-        {ProtExcl,  FitProtonExclComp}
-        };
+        std::vector<std::pair<ExclType, Bool_t>> modes = {{KaonExcl,  FitKaonExclComp}, {ProtExcl,  FitProtonExclComp}};
         for (auto [excl, doThis]: modes) {
             if(!doThis) continue;
             const Char_t* name = (excl==KaonExcl ? "KaonExcl" : "ProtonExcl");
@@ -283,7 +308,7 @@ void nSigma_Plot_ExclComp(){
             std::vector<std::vector<TH1D*>> h_w(nParts, std::vector<TH1D*>(nSteps,nullptr));
 
             std::vector<std::vector<TH1D*>> hcm_no(nParts, std::vector<TH1D*>(nSteps,nullptr));
-            std::vector<std::vector<TH1D*>> hcm_w (nParts, std::vector<TH1D*>(nSteps,nullptr));
+            std::vector<std::vector<TH1D*>> hcm_w(nParts, std::vector<TH1D*>(nSteps,nullptr));
             std::vector<std::vector<covarianceMatrix*>> cmObj(nParts, std::vector<covarianceMatrix*>(nSteps,nullptr));
         
             for (Int_t pid=0; pid<nParts; ++pid) if (doPid[pid]) {
@@ -363,7 +388,6 @@ void nSigma_Plot_ExclComp(){
                 if (!doPid[ref]) continue;
                 TString pdfName = Form("nSigma%s_%s_%sComp-%.2f.pdf", suffix.Data(), help->pCodes[ref], name, sigmaExcl);
                 TCanvas* c = new TCanvas("c","", 950, 700);
-                c->SetLeftMargin(0.15);
                 c->SetLogy();
                 c->Print(pdfName + "[");
 
@@ -395,7 +419,7 @@ void nSigma_Plot_ExclComp(){
                     std::vector<Peak> seeds;
                     Double_t sliceMin = pEdges[i];
                     Double_t sliceMax = pEdges[i+1];
-                    Double_t pMid     = 0.5 * (sliceMin + sliceMax);
+                    Double_t pMid = 0.5 * (sliceMin + sliceMax);
 
                     for (Int_t hyp = 0; hyp < nParts; ++hyp) {
                         Double_t hypMass = help->pMasses[hyp];
@@ -517,24 +541,30 @@ void nSigma_Plot_ExclComp(){
 
                     Int_t manualNGauss = 0;
                     std::vector<Double_t> manualMeans, manualSigmas, manualAmps;
+                    std::vector<TString> manualLabels;
                     if (manualPredictPeaks) {
                         manualNGauss = getenv_int("MANUAL_NGAUSS", 4);
-                        auto defMeans  = std::vector<Double_t>{-6.0, -5.0, 0.0, 1.5};
-                        auto defSigmas = std::vector<Double_t>{ 1.0,  1.0, 1.0, 1.0};
-                        auto defAmps   = std::vector<Double_t>{ 4e5,  4e5, 1e4, 1e4};
+                        auto defMeans  = std::vector<Double_t>{-6.0, -5.0, 0.0, 4};
+                        auto defSigmas = std::vector<Double_t>{1.0, 1.0, 1.0, 1.0};
+                        auto defAmps   = std::vector<Double_t>{3000, 3000, 300, 10};
+                        auto defLabels = std::vector<TString>{"#mu", "#pi", "e", "p"};
 
-                        auto mMeans  = getenv_vecd("MANUAL_MEANS",  defMeans);
+                        auto mMeans  = getenv_vecd("MANUAL_MEANS", defMeans);
                         auto mSigmas = getenv_vecd("MANUAL_SIGMAS", defSigmas);
-                        auto mAmps   = getenv_vecd("MANUAL_AMPS",   defAmps);
+                        auto mAmps   = getenv_vecd("MANUAL_AMPS", defAmps);
+                        auto mLabels = getenv_labels("MANUAL_LABELS", defLabels);
 
                         Int_t L = std::min({manualNGauss, (Int_t)mMeans.size(), (Int_t)mSigmas.size(), (Int_t)mAmps.size()});
                         if (L <= 0) {
                           manualNGauss = 0;
                         } else {
                           manualNGauss = L;
-                          manualMeans.assign (mMeans.begin(),  mMeans.begin()+L);
+                          manualMeans.assign(mMeans.begin(), mMeans.begin()+L);
                           manualSigmas.assign(mSigmas.begin(), mSigmas.begin()+L);
-                          manualAmps.assign  (mAmps.begin(),   mAmps.begin()+L);
+                          manualAmps.assign(mAmps.begin(), mAmps.begin()+L);
+
+                          Int_t nLabels = std::min((Int_t)mLabels.size(), L);
+                         manualLabels.assign(mLabels.begin(), mLabels.begin() + nLabels);
                         }
                     }
 
@@ -620,9 +650,9 @@ void nSigma_Plot_ExclComp(){
                     c->Clear();
                     h1->Draw("E1");
                     Double_t yMax1 = 1.25 * h1->GetMaximum();
-                    TLegend* leg1 = new TLegend(0, 0.10, 0.15, 0.30);
-                    leg1->SetBorderSize(0);
-                    leg1->SetFillStyle(0);
+                    TLegend *leg1 = new TLegend(0.82, 0.75, 0.90, 0.90);
+                    leg1->SetBorderSize(1); 
+                    leg1->SetFillColorAlpha(kWhite, 0.8);
                     std::vector<Double_t> par(sum->GetNpar());
                     std::vector<Double_t> err(sum->GetNpar());
                     for(Int_t i=0; i<sum->GetNpar(); ++i)  {
@@ -765,8 +795,8 @@ void nSigma_Plot_ExclComp(){
                         Double_t var_wK = dFdA*dFdA * eA2*eA2 + dFdS*dFdS * eS*eS;
                         err_areas_wK[ig] = TMath::Sqrt(var_wK);
                     }
-                    const Double_t D_over_N      = (N   > 0 ? D   / N   : std::numeric_limits<Double_t>::quiet_NaN());
-                    const Double_t chi2_over_ndf = (ndf > 0 ? chi2/ ndf : std::numeric_limits<Double_t>::quiet_NaN());
+                    const Double_t D_over_N      = (N   > 0 ? D / N : std::numeric_limits<Double_t>::quiet_NaN());
+                    const Double_t chi2_over_ndf = (ndf > 0 ? chi2 / ndf : std::numeric_limits<Double_t>::quiet_NaN());
 
                     std::vector<Double_t> fitMeans(nG), fitSigmas(nG);
                     std::vector<Double_t> fitAmps_noExcl(nG), fitAmps_wExcl(nG);
@@ -775,22 +805,22 @@ void nSigma_Plot_ExclComp(){
 
                     for (Int_t ig=0; ig<nG; ++ig) {
                         fitAmps_noExcl[ig] = par[offA1 + ig];
-                        fitAmps_wExcl[ig]  = par[offA2 + ig];
-                        fitMeans[ig]       = par[offM  + ig];
-                        fitSigmas[ig]      = par[offS  + ig];
+                        fitAmps_wExcl[ig] = par[offA2 + ig];
+                        fitMeans[ig] = par[offM  + ig];
+                        fitSigmas[ig] = par[offS  + ig];
 
                         e_fitAmps_noExcl[ig] = err[offA1 + ig];
-                        e_fitAmps_wExcl[ig]  = err[offA2 + ig];
-                        e_fitMeans[ig]       = err[offM  + ig];
-                        e_fitSigmas[ig]      = err[offS  + ig];
+                        e_fitAmps_wExcl[ig] = err[offA2 + ig];
+                        e_fitMeans[ig] = err[offM  + ig];
+                        e_fitSigmas[ig] = err[offS  + ig];
                     }
-                    const Double_t bkg_noExcl   = par[offP1];   
-                    const Double_t bkg_wExcl    = par[offP2];
-                    const Double_t ebkg_noExcl  = err[offP1];
-                    const Double_t ebkg_wExcl   = err[offP2];
+                    const Double_t bkg_noExcl = par[offP1];   
+                    const Double_t bkg_wExcl = par[offP2];
+                    const Double_t ebkg_noExcl = err[offP1];
+                    const Double_t ebkg_wExcl = err[offP2];
 
                     auto band_no = computeBandFractions(0); 
-                    auto band_w  = computeBandFractions(1); 
+                    auto band_w = computeBandFractions(1); 
 
                     ndlog.write_slice(
                         suffix.Data(), "noExcl", sigmaExcl, help->pNames[ref],
@@ -813,7 +843,7 @@ void nSigma_Plot_ExclComp(){
                         bkg_wExcl, ebkg_wExcl);
 
                     const Int_t nPoints = 500; 
-                    Double_t dx  = (x_high - x_low)/(nPoints-1);
+                    Double_t dx = (x_high - x_low)/(nPoints-1);
                     std::vector<Double_t> xv(nPoints), y1(nPoints), y2(nPoints);
 
                     const double bw1 = h1->GetXaxis()->GetBinWidth(1);
@@ -825,9 +855,9 @@ void nSigma_Plot_ExclComp(){
                         Double_t yy1 = par[offP1] * bw1;
                         Double_t yy2 = par[offP2] * bw2;
                         for(Int_t ig=0; ig<nG; ++ig) {
-                            Double_t A1  = par[offA1 + ig];
-                            Double_t A2  = par[offA2 + ig];
-                            Double_t mu  = par[offM  + ig];
+                            Double_t A1 = par[offA1 + ig];
+                            Double_t A2 = par[offA2 + ig];
+                            Double_t mu = par[offM  + ig];
                             Double_t sig = par[offS  + ig];
                             yy1 += A1 * TMath::Gaus(x, mu, sig, kFALSE) * bw1;
                             yy2 += A2 * TMath::Gaus(x, mu, sig, kFALSE) * bw2;
@@ -845,23 +875,23 @@ void nSigma_Plot_ExclComp(){
                     gSum2->SetLineColor(kRed);
                     gSum2->SetLineWidth(2);
 
-                    if (!manualPredictPeaks) {
-                        for (const auto &pk : merged) {
-                            Double_t mu = pk.mu;
-                            TLine *l = new TLine(mu, 0, mu, yMax1);
-                            Int_t col  = (pk.id >= 0) ? help->colors[pk.id] : kGray+2;
-                            l->SetLineColor(col);
-                            l->Draw();
-                        }
-                    }
-                    else {
-                        for (Int_t i = 0; i < nG; ++i) {
-                            Double_t mu = seedMeans[i];
-                            TLine *l = new TLine(mu, 0, mu, yMax1);
-                            l->SetLineColor(help->colors[i % nParts]);
-                            l->Draw();
-                        }
-                    }
+                    //if (!manualPredictPeaks) {
+                    //    for (const auto &pk : merged) {
+                    //        Double_t mu = pk.mu;
+                    //        TLine *l = new TLine(mu, 0, mu, yMax1);
+                    //        Int_t col  = (pk.id >= 0) ? help->colors[pk.id] : kGray+2;
+                    //        l->SetLineColor(col);
+                    //        l->Draw();
+                    //    }
+                    //}
+                    //else {
+                    //    for (Int_t i = 0; i < nG; ++i) {
+                    //        Double_t mu = seedMeans[i];
+                    //        TLine *l = new TLine(mu, 0, mu, yMax1);
+                    //        l->SetLineColor(help->colors[i % nParts]);
+                    //        l->Draw();
+                    //    }
+                    //}
                         
                     for (Int_t i = 0; i < nG; ++i) {
                         if (sum->GetParameter(offA1 + i) < 0) continue;
@@ -895,43 +925,44 @@ void nSigma_Plot_ExclComp(){
                                 }
                             }
                         } else {
-                            label = Form("Peak %d", i+1);
+                            if ((Int_t)manualLabels.size() > i) label = manualLabels[i];
+                            else label = Form("Peak %d", i+1);
                         }
                         leg1->AddEntry(g1, label, "l");
                     }
-                    TPaveText *pt1=new TPaveText(0.02,0.90,0.15,0.99,"NDC");
-                    pt1->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
-                    pt1->SetFillColorAlpha(0,0); 
-                    pt1->Draw("same");
+                    //TPaveText *pt1=new TPaveText(0.02,0.90,0.15,0.99,"NDC");
+                    //pt1->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
+                    //pt1->SetFillColorAlpha(0,0); 
+                    //pt1->Draw("same");
                     leg1->Draw();
                     c->Print(pdfName);
                     delete leg1;
-                    delete pt1;
+                    //delete pt1;
 
                     c->Clear();
                     h2->Draw("E1");
                     gSum2->Draw("L SAME");
-                    TLegend* leg2 = new TLegend(0, 0.10, 0.15, 0.30);
-                    leg2->SetBorderSize(0);
-                    leg2->SetFillStyle(0);
+                    TLegend *leg2 = new TLegend(0.82, 0.75, 0.90, 0.90);
+                    leg2->SetBorderSize(1); 
+                    leg2->SetFillColorAlpha(kWhite, 0.8);
                     Double_t yMax2 = 1.25 * h2->GetMaximum();
-                    if (!manualPredictPeaks) {
-                        for (const auto &pk : merged) {
-                            Double_t mu = pk.mu;
-                            TLine *l = new TLine(mu, 0, mu, yMax2);
-                            Int_t col  = (pk.id >= 0) ? help->colors[pk.id] : kGray+2;
-                            l->SetLineColor(col);
-                            l->Draw();
-                        }
-                    }
-                    else {
-                        for (Int_t i = 0; i < nG; ++i) {
-                            Double_t mu = seedMeans[i];
-                            TLine *l = new TLine(mu, 0, mu, yMax2);
-                            l->SetLineColor(help->colors[i % nParts]);
-                            l->Draw();
-                        }
-                    }
+                    //if (!manualPredictPeaks) {
+                    //    for (const auto &pk : merged) {
+                    //        Double_t mu = pk.mu;
+                    //        TLine *l = new TLine(mu, 0, mu, yMax2);
+                    //        Int_t col = (pk.id >= 0) ? help->colors[pk.id] : kGray+2;
+                    //        l->SetLineColor(col);
+                    //        l->Draw();
+                    //    }
+                    //}
+                    //else {
+                    //    for (Int_t i = 0; i < nG; ++i) {
+                    //        Double_t mu = seedMeans[i];
+                    //        TLine *l = new TLine(mu, 0, mu, yMax2);
+                    //        l->SetLineColor(help->colors[i % nParts]);
+                    //        l->Draw();
+                    //    }
+                    //}
 
                     for (Int_t i = 0; i < nG; ++i) {
                         if (sum->GetParameter(offA2 + i) < 0) continue;
@@ -956,7 +987,7 @@ void nSigma_Plot_ExclComp(){
                             auto &ids = merged[i].merged_ids;
                             std::sort(ids.begin(), ids.end());
                             ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
-                            if (ids.size()==1) {
+                            if (ids.size() == 1) {
                                 label = help->pCodes[ids[0]];
                             } else {
                                 for (size_t j=0; j<ids.size(); ++j) {
@@ -965,17 +996,18 @@ void nSigma_Plot_ExclComp(){
                                 }
                             }
                         } else {
-                            label = Form("Peak %d", i+1);
+                            if ((Int_t)manualLabels.size() > i) label = manualLabels[i];
+                            else label = Form("Peak %d", i+1);
                         }
                         leg2->AddEntry(g2, label, "l");
                     } 
-                    TPaveText *pt2=new TPaveText(0.02,0.90,0.15,0.99,"NDC");
-                    pt2->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
-                    pt2->SetFillColorAlpha(0,0); 
-                    pt2->Draw("same");
+                    //TPaveText *pt2=new TPaveText(0.02,0.90,0.15,0.99,"NDC");
+                    //pt2->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
+                    //pt2->SetFillColorAlpha(0,0); 
+                    //pt2->Draw("same");
                     leg2->Draw();
                     c->Print(pdfName);
-                    delete pt2;
+                    //delete pt2;
                     delete leg2;
                     delete sum;
                 }    
@@ -987,7 +1019,7 @@ void nSigma_Plot_ExclComp(){
         }
     };
     for (Double_t s : sigmaExclList) {
-        if (plotTPC) drawNSigma(true,  s);
+        if (plotTPC) drawNSigma(true, s);
         if (plotTOF) drawNSigma(false, s);
     } 
 }
