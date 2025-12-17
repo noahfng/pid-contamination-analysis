@@ -236,6 +236,23 @@ static inline std::vector<TString> getenv_labels(const Char_t* k, const std::vec
   return out.empty() ? fallback : out;
 }
 
+static int PidFromLabel(TString lab)
+{
+  lab.ReplaceAll(" ", "");
+  lab.ToLower();
+
+  // merged case
+  if (lab.Contains("#mu") && lab.Contains("#pi")) return 1; // choose a convention
+
+  if (lab=="e" || lab=="el" || lab=="electron") return 0;
+  if (lab=="#mu" || lab=="mu" || lab=="#mu+" || lab=="muon") return 1;
+  if (lab=="#pi" || lab=="pi" || lab=="pion") return 2;
+  if (lab=="k" || lab=="#k" || lab=="ka" || lab=="kaon") return 3;
+  if (lab=="p" || lab=="pr" || lab=="proton") return 4;
+
+  return -1; 
+}
+
 void nSigma_Plot_ExclComp(){
     auto help = new helper();
     const Int_t nParts = helper::nParts;
@@ -543,7 +560,7 @@ void nSigma_Plot_ExclComp(){
                     std::vector<TString> manualLabels;
                     if (manualPredictPeaks) {
                         manualNGauss = getenv_int("MANUAL_NGAUSS", 4);
-                        auto defMeans  = std::vector<Double_t>{-6.0, -5.0, 0.0, 4};
+                        auto defMeans  = std::vector<Double_t>{-6.0, -5.0, 0.5, 5.0};
                         auto defSigmas = std::vector<Double_t>{1.0, 1.0, 1.0, 1.0};
                         auto defAmps   = std::vector<Double_t>{3000, 3000, 300, 10};
                         auto defLabels = std::vector<TString>{"#mu", "#pi", "e", "p"};
@@ -906,7 +923,11 @@ void nSigma_Plot_ExclComp(){
                             Int_t col = (merged[i].id >= 0) ? help->colors[merged[i].id] : kGray+2;
                             g1->SetLineColor(col);
                         } else {
-                            g1->SetLineColor(help->colors[i % nParts]);   
+                            int pid = -1;
+                            if ((Int_t)manualLabels.size() > i) pid = PidFromLabel(manualLabels[i]);
+
+                            if (pid >= 0) g1->SetLineColor(help->colors[pid]);
+                            else          g1->SetLineColor(kGray+2);  // fallback  
                         }
                         g1->SetLineStyle(2);
                         g1->SetNpx(500);
@@ -979,7 +1000,11 @@ void nSigma_Plot_ExclComp(){
                             Int_t col = (merged[i].id >= 0) ? help->colors[merged[i].id] : kGray+2;
                             g2->SetLineColor(col);
                         } else {
-                            g2->SetLineColor(help->colors[i % nParts]);   
+                            int pid = -1;
+                            if ((Int_t)manualLabels.size() > i) pid = PidFromLabel(manualLabels[i]);
+
+                            if (pid >= 0) g2->SetLineColor(help->colors[pid]);
+                            else          g2->SetLineColor(kGray+2);  // fallback
                         }
                         g2->SetLineStyle(2);
                         g2->SetNpx(500);
