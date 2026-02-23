@@ -53,7 +53,7 @@ void dEdx_vs_p() {
     // histogram
     const Double_t step = (pMax - pMin) / nPoints;
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
-    TH2D *hist = new TH2D("dedx_vs_p1", "TPC Energy Loss vs Momentum (Bethe-Bloch Bands);p [GeV/c];dE/dx [arb.u.]", 1000, pMin, pMax, 1000, 20, 120);
+    TH2D *hist = new TH2D("dedx_vs_p1",";#it{p} (GeV/#it{c});#LTd#it{E}/d#it{x}#GT (a.u.)",1000, pMin, pMax, 1000, 20, 120);
     hist->GetXaxis()->SetTitleOffset(1.3);
     
     // event/track loop
@@ -78,13 +78,19 @@ void dEdx_vs_p() {
     c->SetRightMargin(0.12);
     c->SetLogz(); 
     c->SetLogx();
-    c->SetGrid();
+    c->SetGrid(0,0);      // no grid
+    c->SetTickx();
+    c->SetTicky();
+    c->SetLeftMargin(0.12);
+    c->SetBottomMargin(0.12);
+    c->SetRightMargin(0.14); 
+    c->SetTopMargin(0.06);
 
     hist->SetStats(false);
     hist->Draw("COLZ");
 
     // overlay Bethe–Bloch bands
-    TLegend *leg = new TLegend(0.84, 0.70, 0.88, 0.90);
+    TLegend *leg = new TLegend(0.82, 0.74, 0.86, 0.94);
     leg->SetBorderSize(1); 
     leg->SetMargin(0.45);
     leg->SetFillColorAlpha(kWhite, 0.8);
