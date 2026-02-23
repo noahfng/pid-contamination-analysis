@@ -23,7 +23,7 @@ public:
 
     // Species bookkeeping
     enum {nParts = 5};
-    const Int_t colors[nParts]  = {kOrange+7, kGreen+2, kViolet+1, kBlack, kBlue};
+    const Int_t colors[nParts]  = {kOrange+7, kBlue, kViolet+1, kBlack, kGreen+2};
     const Char_t* dNames[2] = {"TPC", "TOF"};
     const Char_t* pNames[nParts] = {"El", "Mu", "Pi", "Ka", "Pr"};
     const Char_t* pCodes[nParts] = {"e", "#mu", "#pi", "K", "p"};
