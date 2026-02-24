@@ -19,6 +19,24 @@
 #include <AddTrees.h>   // project-specific: file discovery/chain fill
 #include <helpers.h>    // project-specific: masses, charges, colors, Bethe–Bloch
 
+static int PidFromLabel(TString lab)
+{
+  lab.ReplaceAll(" ", "");
+  lab.ToLower();
+
+  // merged case
+  if (lab.Contains("#mu") && lab.Contains("#pi")) return 1; // convention: treat as mu-color
+
+  if (lab=="e" || lab=="el" || lab=="electron") return 0;
+  if (lab=="#mu" || lab=="mu" || lab=="#mu+" || lab=="muon") return 1;
+  if (lab=="#pi" || lab=="pi" || lab=="pion") return 2;
+  if (lab=="k" || lab=="#k" || lab=="ka" || lab=="kaon") return 3;
+  if (lab=="p" || lab=="pr" || lab=="proton") return 4;
+
+  return -1; 
+}
+
+
 void nSigma_Plot(){
     auto help = new helper();
     const Int_t nParts = helper::nParts;
@@ -27,13 +45,13 @@ void nSigma_Plot(){
     // histogram & slicing config
     const Int_t nBins = 500;
     const Double_t xMin = -10.0, xMax = 10.0;
-    const Double_t pStart = 0.45, pEnd = 0.55; // momentum slicing (GeV/c)
+    const Double_t pStart = 0.35, pEnd = 0.45; // momentum slicing (GeV/c)
     const Double_t step = 0.1; // slice width (GeV/c)
 
     // peak finding & fitting config
-    const Double_t muWindow = 0.5; // ±window for μ during fit init
+    const Double_t muWindow = 2.0; // ±window for μ during fit init
     const Double_t mergeDistanceFactor = 1.0; // merge seeds if |Δμ| < f·max(σ)
-    const Double_t nEntriesLimit = 1e7;
+    const Double_t nEntriesLimit = 1e6;
 
     // event/track filters
     const Bool_t TOFfilter = false; // require TOF info
@@ -52,7 +70,7 @@ void nSigma_Plot(){
 
     // batch only in auto mode; interactive needs windows
     gROOT->SetBatch(!manualPredictPeaks);
-    gStyle->SetOptStat(1);
+    gStyle->SetOptStat(0);
 
     // input data chain
     TChain chain("twotauchain");
@@ -135,7 +153,6 @@ void nSigma_Plot(){
             TString pdfName = Form("nSigma%s_%s.pdf", suffix.Data(), help->pCodes[ref]);
 
             TCanvas* c = new TCanvas("c","", 950, 700);
-            c->SetLeftMargin(0.15);
             c->SetLogy();
             c->Print(pdfName + "[");
             
@@ -265,6 +282,8 @@ void nSigma_Plot(){
                 // seeding mode: manual (interactive) or automatic (from merged)
                 Int_t manualNGauss = 0;
                 std::vector<Double_t> manualMeans, manualSigmas, manualAmps;
+                std::vector<TString> manualLabels;
+                std::vector<Int_t> manualPids;
                 if (manualPredictPeaks) {
                     c->cd();
                     c->Clear();
@@ -290,6 +309,14 @@ void nSigma_Plot(){
                         std::cout << "Enter " << manualNGauss << " amplitude guesses for each peak (space-separated): ";
                         for (Int_t i = 0; i < manualNGauss; ++i){
                             std::cin >> manualAmps[i];
+                        }
+                        manualLabels.resize(manualNGauss);
+                        manualPids.resize(manualNGauss);
+                        std::cout << "Enter " << manualNGauss << " labels (e, mu, pi, k, p, or '#mu+#pi'):\n";
+                        for (Int_t i=0;i<manualNGauss;++i) {
+                            std::cout << "  label[" << i << "]: ";
+                            std::cin >> manualLabels[i];
+                            manualPids[i] = PidFromLabel(manualLabels[i]);
                         }
                     } else {
                         std::cerr << "Invalid number of Gaussians; falling back to automatic mode." << std::endl;
@@ -362,9 +389,10 @@ void nSigma_Plot(){
                 h1->Draw("E1");
                 Double_t yMax1 = 1.25 * h1->GetMaximum();
 
-                TLegend* leg = new TLegend(0, 0.10, 0.15, 0.30);
-                leg->SetBorderSize(0);
-                leg->SetFillStyle(0);
+                TLegend *leg = new TLegend(0.84, 0.70, 0.90, 0.90);
+                leg->SetBorderSize(1); 
+                leg->SetMargin(0.45);
+                leg->SetFillColorAlpha(kWhite, 0.8);
                 sum->SetLineColor(kRed); 
                 sum->SetLineWidth(2); 
                 sum->SetNpx(500); 
@@ -376,6 +404,8 @@ void nSigma_Plot(){
                         Double_t mu = pk.mu;
                         TLine *l = new TLine(mu, 0, mu, yMax1);
                         Int_t col  = (pk.id >= 0) ? help->colors[pk.id] : kGray+2;
+                        Int_t pid = manualPids.empty() ? -1 : manualPids[i];
+                        Int_t col = (pid >= 0 ? help->colors[pid] : help->colors[i % nParts]);
                         l->SetLineColor(col);
                         l->Draw();
                     }
@@ -426,12 +456,6 @@ void nSigma_Plot(){
                     }
                     leg->AddEntry(g, label, "l");
                 }
-
-                // χ²/ndf box
-                TPaveText *pt=new TPaveText(0.02,0.90,0.25,0.99,"NDC");
-                pt->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
-                pt->SetFillColorAlpha(0,0); 
-                pt->Draw("same");
                 leg->Draw();
                 c->Print(pdfName);
                 delete sum;

@@ -262,7 +262,7 @@ void nSigma_Plot_ExclComp(){
     const Double_t pStart = getenv_double("PSTART", 0.35), pEnd = getenv_double("PEND", 0.45), step = 0.1;
     const Double_t muWindow = 2.0;
     const Double_t mergeDistanceFactor = 1.0;
-    const Double_t nEntriesLimit = 1e7; 
+    const Double_t nEntriesLimit = 1e10; 
     const Bool_t FitKaonExclComp = getenv_bool("FITKAONEXCLCOMP", true);
     const Bool_t FitProtonExclComp = getenv_bool("FITPROTONEXCLCOMP", false);
     const Bool_t plotTPC = true;
@@ -563,7 +563,7 @@ void nSigma_Plot_ExclComp(){
                         auto defMeans  = std::vector<Double_t>{-6.0, -5.0, 0.5, 5.0};
                         auto defSigmas = std::vector<Double_t>{1.0, 1.0, 1.0, 1.0};
                         auto defAmps   = std::vector<Double_t>{3000, 3000, 300, 10};
-                        auto defLabels = std::vector<TString>{"#mu", "#pi", "e", "p"};
+                        auto defLabels = std::vector<TString>{"#mu", "#pi", "e", "K"};
 
                         auto mMeans  = getenv_vecd("MANUAL_MEANS", defMeans);
                         auto mSigmas = getenv_vecd("MANUAL_SIGMAS", defSigmas);
@@ -951,6 +951,7 @@ void nSigma_Plot_ExclComp(){
                             else label = Form("Peak %d", i+1);
                         }
                         leg1->AddEntry(g1, label, "l");
+                        leg1->AddEntry(gSum1, "Sum", "l");
                     }
                     leg1->Draw();
                     //TPaveText *pt1=new TPaveText(0.02,0.90,0.15,0.99,"NDC");
@@ -1028,6 +1029,7 @@ void nSigma_Plot_ExclComp(){
                             else label = Form("Peak %d", i+1);
                         }
                         leg2->AddEntry(g2, label, "l");
+                        leg2->AddEntry(gSum2, "Sum", "l");
                     }      
                     leg2->Draw();   
                     //TPaveText *pt2=new TPaveText(0.02,0.90,0.15,0.99,"NDC");
