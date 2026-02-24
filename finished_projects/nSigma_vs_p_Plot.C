@@ -75,20 +75,12 @@ void nSigma_vs_p_Plot() {
     TH2D* histTOF[nParts];
     for (Int_t i = 0; i < nParts; ++i) {
         if(!doPid[i]) continue;
-        histTPC[i] = new TH2D(
-          Form("tpc_%s", help->pNames[i]),
-          Form("n#sigma_{%s} vs p (TPC);p [GeV/c];n#sigma_{%s}", help->pCodes[i], help->pCodes[i]),
-          1000, pMin, pMax, 1000, yMin, yMax
-        );
+        histTPC[i] = new TH2D(Form("tpc_%s", help->pNames[i]), Form("n#sigma_{%s} vs #it{p} (TPC);#it{p} (GeV/#it{c});n#sigma_{%s}", help->pCodes[i], help->pCodes[i]), 1000, pMin, pMax, 1000, yMin, yMax);
         histTPC[i]->GetXaxis()->SetTitleOffset(1.3);
-        histTOF[i] = new TH2D(
-          Form("tof_%s", help->pNames[i]),
-          Form("n#sigma_{%s} vs p (TOF);p [GeV/c];n#sigma_{%s}", help->pCodes[i], help->pCodes[i]),
-          1000, pMin, pMax, 1000, yMin, yMax
-        );
+        histTOF[i] = new TH2D(Form("tof_%s", help->pNames[i]), Form("n#sigma_{%s} vs #it{p} (TOF);#it{p} (GeV/#it{c});n#sigma_{%s}", help->pCodes[i], help->pCodes[i]), 1000, pMin, pMax, 1000, yMin, yMax);
         histTOF[i]->GetXaxis()->SetTitleOffset(1.3);
     }
-    
+
     // fill histograms
     for (Long64_t ev = 0; ev < nEntries; ++ev) {
         chain.GetEntry(ev);
