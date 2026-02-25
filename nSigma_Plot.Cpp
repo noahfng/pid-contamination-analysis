@@ -15,27 +15,71 @@
 #include "TLine.h"
 #include "TPaveText.h"
 #include "TSystem.h"
+#include "TObjString.h"
 
 #include <AddTrees.h>   // project-specific: file discovery/chain fill
 #include <helpers.h>    // project-specific: masses, charges, colors, Bethe–Bloch
 
-static int PidFromLabel(TString lab)
+static Int_t PidToken(TString tok)
+{
+  tok.ReplaceAll(" ", "");
+  tok.ToLower();
+
+  if (tok=="e"  || tok=="el" || tok=="electron") return 0;
+  if (tok=="mu" || tok=="#mu" || tok=="muon")    return 1;
+  if (tok=="pi" || tok=="#pi" || tok=="pion")    return 2;
+  if (tok=="k"  || tok=="#k"  || tok=="ka" || tok=="kaon") return 3;
+  if (tok=="p"  || tok=="pr"  || tok=="proton") return 4;
+
+  return -1;
+}
+
+static std::vector<Int_t> PidsFromLabel(TString lab)
 {
   lab.ReplaceAll(" ", "");
   lab.ToLower();
+  lab.ReplaceAll(",", "+");
 
-  // merged case
-  if (lab.Contains("#mu") && lab.Contains("#pi")) return 1; // convention: treat as mu-color
+  std::vector<Int_t> out;
 
-  if (lab=="e" || lab=="el" || lab=="electron") return 0;
-  if (lab=="#mu" || lab=="mu" || lab=="#mu+" || lab=="muon") return 1;
-  if (lab=="#pi" || lab=="pi" || lab=="pion") return 2;
-  if (lab=="k" || lab=="#k" || lab=="ka" || lab=="kaon") return 3;
-  if (lab=="p" || lab=="pr" || lab=="proton") return 4;
+  // split by '+'
+  std::unique_ptr<TObjArray> parts(lab.Tokenize("+"));
+  for (Int_t i = 0; i < parts->GetEntriesFast(); ++i) {
+    TString tok = ((TObjString*)parts->At(i))->GetString();
+    Int_t pid = PidToken(tok);
+    if (pid >= 0) out.push_back(pid);
+  }
 
-  return -1; 
+  // unique
+  std::sort(out.begin(), out.end());
+  out.erase(std::unique(out.begin(), out.end()), out.end());
+  return out;
 }
 
+static TString LegendFromPids(const std::vector<Int_t>& pids, const helper* help)
+{
+  if (pids.empty()) return "";
+
+  // optional: force mu then pi first if both present (nice convention)
+  std::vector<Int_t> ordered = pids;
+  const Bool_t hasMu = std::find(ordered.begin(), ordered.end(), 1) != ordered.end();
+  const Bool_t hasPi = std::find(ordered.begin(), ordered.end(), 2) != ordered.end();
+
+  if (hasMu && hasPi) {
+    // build: mu + pi + (rest)
+    std::vector<Int_t> rest;
+    for (auto pid : ordered) if (pid != 1 && pid != 2) rest.push_back(pid);
+
+    TString s = Form("%s + %s", help->pCodes[1], help->pCodes[2]);
+    for (auto pid : rest) s += TString::Format(" + %s", help->pCodes[pid]);
+    return s;
+  }
+
+  // default: join everything
+  TString s = help->pCodes[ordered[0]];
+  for (size_t i = 1; i < ordered.size(); ++i) s += TString::Format(" + %s", help->pCodes[ordered[i]]);
+  return s;
+}
 
 void nSigma_Plot(){
     auto help = new helper();
@@ -44,14 +88,14 @@ void nSigma_Plot(){
 
     // histogram & slicing config
     const Int_t nBins = 500;
-    const Double_t xMin = -10.0, xMax = 10.0;
+    const Double_t xMin = -10.0, xMax = 12.0;
     const Double_t pStart = 0.35, pEnd = 0.45; // momentum slicing (GeV/c)
     const Double_t step = 0.1; // slice width (GeV/c)
 
     // peak finding & fitting config
     const Double_t muWindow = 2.0; // ±window for μ during fit init
     const Double_t mergeDistanceFactor = 1.0; // merge seeds if |Δμ| < f·max(σ)
-    const Double_t nEntriesLimit = 1e6;
+    const Double_t nEntriesLimit = 1e10;
 
     // event/track filters
     const Bool_t TOFfilter = false; // require TOF info
@@ -283,7 +327,7 @@ void nSigma_Plot(){
                 Int_t manualNGauss = 0;
                 std::vector<Double_t> manualMeans, manualSigmas, manualAmps;
                 std::vector<TString> manualLabels;
-                std::vector<Int_t> manualPids;
+                std::vector<std::vector<Int_t>> manualPids;
                 if (manualPredictPeaks) {
                     c->cd();
                     c->Clear();
@@ -312,11 +356,11 @@ void nSigma_Plot(){
                         }
                         manualLabels.resize(manualNGauss);
                         manualPids.resize(manualNGauss);
-                        std::cout << "Enter " << manualNGauss << " labels (e, mu, pi, k, p, or '#mu+#pi'):\n";
+                        std::cout << "Enter " << manualNGauss << " labels (e, mu, pi, K, p, or 'mu+pi'):\n";
                         for (Int_t i=0;i<manualNGauss;++i) {
                             std::cout << "  label[" << i << "]: ";
                             std::cin >> manualLabels[i];
-                            manualPids[i] = PidFromLabel(manualLabels[i]);
+                            manualPids[i] = PidsFromLabel(manualLabels[i]);
                         }
                     } else {
                         std::cerr << "Invalid number of Gaussians; falling back to automatic mode." << std::endl;
@@ -389,61 +433,41 @@ void nSigma_Plot(){
                 h1->Draw("E1");
                 Double_t yMax1 = 1.25 * h1->GetMaximum();
 
-                TLegend *leg = new TLegend(0.84, 0.70, 0.90, 0.90);
+                TLegend *leg = new TLegend(0.80, 0.70, 0.90, 0.90);
                 leg->SetBorderSize(1); 
                 leg->SetMargin(0.45);
                 leg->SetFillColorAlpha(kWhite, 0.8);
+                leg->SetTextSize(0.030);            // force readable text
+                leg->SetTextFont(42);
                 sum->SetLineColor(kRed); 
                 sum->SetLineWidth(2); 
                 sum->SetNpx(500); 
                 sum->Draw("same");
+                leg->AddEntry(sum, "Sum", "l");
 
-                // vertical lines at predicted/entered μ
-                if (!manualPredictPeaks) {
-                    for (const auto &pk : merged) {
-                        Double_t mu = pk.mu;
-                        TLine *l = new TLine(mu, 0, mu, yMax1);
-                        Int_t col  = (pk.id >= 0) ? help->colors[pk.id] : kGray+2;
-                        Int_t pid = manualPids.empty() ? -1 : manualPids[i];
-                        Int_t col = (pid >= 0 ? help->colors[pid] : help->colors[i % nParts]);
-                        l->SetLineColor(col);
-                        l->Draw();
-                    }
-                }
-                else {
-                    for (Int_t i = 0; i < nG; ++i) {
-                        Double_t mu = means[i];
-                        TLine *l = new TLine(mu, 0, mu, yMax1);
-                        l->SetLineColor(help->colors[i % nParts]);
-                        l->Draw();
-                    }
-                }
-                
-                // individual Gaussian components + legend labels
-                for (Int_t i = 0; i < nG; ++i) {
-                    if (sum->GetParameter(3*i) <= 0) continue;
-                    TF1 *g = new TF1(Form("g_%d_%d", ref, i), "gaus", x_low, x_high);
+                for (Int_t ig = 0; ig < (Int_t)nG; ++ig) {
+                    if (sum->GetParameter(3*ig) <= 0) continue;
+
+                    TF1 *g = new TF1(Form("g_%d_%d", ref, ig), "gaus", x_low, x_high);
                     g->SetParameters(
-                        sum->GetParameter(3*i),
-                        sum->GetParameter(3*i+1),
-                        sum->GetParameter(3*i+2)
+                        sum->GetParameter(3*ig),
+                        sum->GetParameter(3*ig+1),
+                        sum->GetParameter(3*ig+2)
                     );
-                    if (!manualPredictPeaks) {
-                        Int_t col = (merged[i].id >= 0) ? help->colors[merged[i].id] : kGray+2;
-                        g->SetLineColor(col);
-                    } else {
-                        g->SetLineColor(help->colors[i % nParts]);   
-                    }
-                    g->SetLineStyle(2);
-                    g->SetNpx(500);
-                    g->Draw("same");
 
                     TString label;
+                    Int_t col = kGray+2;
+
                     if (!manualPredictPeaks) {
-                        auto &ids = merged[i].merged_ids;
+                        // automatic mode: use merged IDs
+                        col = (merged[ig].id >= 0) ? help->colors[merged[ig].id] : kGray+2;
+                        g->SetLineColor(col);
+
+                        auto ids = merged[ig].merged_ids;
                         std::sort(ids.begin(), ids.end());
                         ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
-                        if (ids.size()==1) {
+
+                        if ((int)ids.size() == 1) {
                             label = help->pCodes[ids[0]];
                         } else {
                             for (size_t j=0; j<ids.size(); ++j) {
@@ -452,12 +476,30 @@ void nSigma_Plot(){
                             }
                         }
                     } else {
-                    label = Form("Peak %d", i+1);
+                        TString raw = ((Int_t)manualLabels.size() > ig) ? manualLabels[ig] : "";
+
+                        auto pids = PidsFromLabel(raw);
+
+                        const Bool_t hasMu = (std::find(pids.begin(), pids.end(), 1) != pids.end());
+                        const Bool_t hasPi = (std::find(pids.begin(), pids.end(), 2) != pids.end());
+
+                        Int_t colorPid = -1;
+                        if (hasMu && hasPi) colorPid = 1;
+                        else if ((Int_t)pids.size() == 1) colorPid = pids[0];
+                        else if (!pids.empty()) colorPid = pids[0]; 
+
+                        col = (colorPid >= 0) ? help->colors[colorPid] : kGray+2;
+                        label = !pids.empty() ? LegendFromPids(pids, help) : (raw.Length() ? raw : Form("Peak %d", ig+1));
+                        g->SetLineColor(col);
                     }
+                    g->SetLineStyle(2);
+                    g->SetNpx(500);
+                    g->Draw("same");
                     leg->AddEntry(g, label, "l");
                 }
                 leg->Draw();
                 c->Print(pdfName);
+                std::cout << Form("Slice %d: χ²/ndf = %.2f\n", i, sum->GetChisquare()/sum->GetNDF());
                 delete sum;
                 delete leg;
             }
