@@ -6,6 +6,7 @@
 #include "TMath.h"      
 #include "TStyle.h"     
 #include "TString.h"
+#include "TPaletteAxis.h"
 
 #include <AddTrees.h>   // project-specific: file discovery/chain fill
 #include <helpers.h>    // project-specific: masses, charges, colors, Bethe–Bloch
@@ -75,7 +76,6 @@ void dEdx_vs_p() {
 
     // draw heatmap
     TCanvas* c = new TCanvas("c","dE/dx vs p (tracks)",800,600); 
-    c->SetRightMargin(0.12);
     c->SetLogz(); 
     c->SetLogx();
     c->SetGrid(0,0);      // no grid
@@ -88,6 +88,14 @@ void dEdx_vs_p() {
 
     hist->SetStats(false);
     hist->Draw("COLZ");
+    gPad->Update();  // force creation of palette
+
+    TPaletteAxis *palette = (TPaletteAxis*)hist->GetListOfFunctions()->FindObject("palette");
+    if (palette) {
+        palette->SetTitle("Track density");
+        palette->SetTitleOffset(1.2);
+    }
+
 
     // overlay Bethe–Bloch bands
     TLegend *leg = new TLegend(0.82, 0.74, 0.86, 0.94);
