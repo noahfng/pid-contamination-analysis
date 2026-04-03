@@ -93,6 +93,7 @@ void nSigma_Plot(){
     const Double_t step = 0.1; // slice width (GeV/c)
 
     // peak finding & fitting config
+    const Bool_t FitData = false; // if false, only draw histograms 
     const Double_t muWindow = 2.0; // ±window for μ during fit init
     const Double_t mergeDistanceFactor = 1.0; // merge seeds if |Δμ| < f·max(σ)
     const Double_t nEntriesLimit = 1e10;
@@ -105,7 +106,6 @@ void nSigma_Plot(){
     // what to draw
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
-    const Bool_t PeakZoom = false; // autoset x-range around predicted peaks
 
     // seed strategy
     const Bool_t manualPredictPeaks = true; // interactive seeding (means/sigmas/amps); else auto from predicted model
@@ -113,7 +113,7 @@ void nSigma_Plot(){
     using PeakPars = std::array<Double_t,4>;
 
     // batch only in auto mode; interactive needs windows
-    gROOT->SetBatch(!manualPredictPeaks);
+    gROOT->SetBatch(!FitData || !manualPredictPeaks);
     gStyle->SetOptStat(0);
 
     // input data chain
@@ -202,14 +202,23 @@ void nSigma_Plot(){
             
             for (Int_t i = 0; i < nSteps; ++i) {
                 TH1D* h1 = hists[ref][i];
+                if (!FitData) {
+                    c->cd();
+                    c->Clear();
+                    h1->Draw("E1");
+                    c->Modified();
+                    c->Update();
+                    c->Print(pdfName);
+                    continue;
+                }
 
                 // seed peaks from physics model (μ,σ) and histogram amplitude at μ
                 struct Peak {Double_t A, mu, sigma; Int_t id; std::vector<Int_t> merged_ids;Bool_t alwaysSeparate = false;};
                 std::vector<Peak> seeds;
                 Double_t sliceMin = pEdges[i];
                 Double_t sliceMax = pEdges[i+1];
-                Double_t pMid     = 0.5 * (sliceMin + sliceMax);
-
+                Double_t pMid = 0.5 * (sliceMin + sliceMax);
+                
                 for (Int_t hyp = 0; hyp < nParts; ++hyp) {
                     Double_t hypMass = help->pMasses[hyp];
                     Double_t sigma0, mu;
@@ -304,25 +313,6 @@ void nSigma_Plot(){
                     }
                 }
 
-                 // optional x-range zoom around predicted peaks
-                Double_t x_low  = xMin, x_high = xMax;
-                if (PeakZoom) {
-                    const Double_t Nsigma = 8.0;
-                    if (!merged.empty()) {
-                    x_low  = merged[0].mu - Nsigma * merged[0].sigma;
-                    x_high = merged[0].mu + Nsigma * merged[0].sigma;
-                    for (size_t i = 1; i < merged.size(); ++i) {
-                        Double_t this_lo = merged[i].mu - Nsigma * merged[i].sigma;
-                        Double_t this_hi = merged[i].mu + Nsigma * merged[i].sigma;
-                        x_low  = std::min(x_low,  this_lo);
-                        x_high = std::max(x_high, this_hi);
-                    }
-                    x_low  = std::max(x_low,  xMin);
-                    x_high = std::min(x_high, xMax);
-                    }
-                    h1->GetXaxis()->SetRangeUser(x_low, x_high);
-                }
-
                 // seeding mode: manual (interactive) or automatic (from merged)
                 Int_t manualNGauss = 0;
                 std::vector<Double_t> manualMeans, manualSigmas, manualAmps;
@@ -381,8 +371,6 @@ void nSigma_Plot(){
                 if (nG < 1) { c->Print(pdfName); delete h1; continue; }
                 
                 // build sum-of-Gaussians + constant background and set parameter limits
-                Double_t fit_lo = x_low;
-                Double_t fit_hi = x_high;
                 std::ostringstream form;
                 for (size_t i = 0; i < nG; ++i) {
                     if (i) form << "+"; 
@@ -390,7 +378,7 @@ void nSigma_Plot(){
                 }
                 size_t idxLine = 3 * nG;
                 form << "+pol0(" << idxLine << ")";
-                TF1 *sum = new TF1("sum", form.str().c_str(), fit_lo, fit_hi);
+                TF1 *sum = new TF1("sum", form.str().c_str(), xMin, xMax);
                 sum->SetParLimits(idxLine, 0, 10.0);
                 sum->SetParameter(idxLine, 1.0);
                 for (size_t i = 0; i < nG; ++i) {
@@ -427,7 +415,7 @@ void nSigma_Plot(){
                 }
 
                 // χ² fit (custom helper uses bin-by-bin errors, respects TF1 limits)
-                help->FitHistogramByChi2(h1, sum, x_low, x_high);
+                help->FitHistogramByChi2(h1, sum, xMin, xMax);
 
                 // draw: data, total fit, components, labels
                 h1->Draw("E1");
@@ -448,7 +436,7 @@ void nSigma_Plot(){
                 for (Int_t ig = 0; ig < (Int_t)nG; ++ig) {
                     if (sum->GetParameter(3*ig) <= 0) continue;
 
-                    TF1 *g = new TF1(Form("g_%d_%d", ref, ig), "gaus", x_low, x_high);
+                    TF1 *g = new TF1(Form("g_%d_%d", ref, ig), "gaus", xMin, xMax);
                     g->SetParameters(
                         sum->GetParameter(3*ig),
                         sum->GetParameter(3*ig+1),
