@@ -93,7 +93,6 @@ void nSigma_Plot(){
     const Double_t step = 0.1; // slice width (GeV/c)
 
     // peak finding & fitting config
-    const Bool_t FitData = false; // if false, only draw histograms 
     const Double_t muWindow = 2.0; // ±window for μ during fit init
     const Double_t mergeDistanceFactor = 1.0; // merge seeds if |Δμ| < f·max(σ)
     const Double_t nEntriesLimit = 1e10;
@@ -106,6 +105,9 @@ void nSigma_Plot(){
     // what to draw
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
+    const Bool_t drawPredictedLines = true; // vertical lines at predicted peak positions (from model, not fit)
+    const Bool_t drawSum = true; // overlay sum of Gaussians fit result
+    const Bool_t drawComponents = true; // overlay individual Gaussian components from fit 
 
     // seed strategy
     const Bool_t manualPredictPeaks = true; // interactive seeding (means/sigmas/amps); else auto from predicted model
@@ -113,7 +115,7 @@ void nSigma_Plot(){
     using PeakPars = std::array<Double_t,4>;
 
     // batch only in auto mode; interactive needs windows
-    gROOT->SetBatch(!FitData || !manualPredictPeaks);
+    gROOT->SetBatch(!manualPredictPeaks);
     gStyle->SetOptStat(0);
 
     // input data chain
@@ -202,7 +204,7 @@ void nSigma_Plot(){
             
             for (Int_t i = 0; i < nSteps; ++i) {
                 TH1D* h1 = hists[ref][i];
-                if (!FitData) {
+                if (!drawSum && !drawComponents && !drawPredictedLines) {
                     c->cd();
                     c->Clear();
                     h1->Draw("E1");
@@ -419,20 +421,122 @@ void nSigma_Plot(){
 
                 // draw: data, total fit, components, labels
                 h1->Draw("E1");
-                Double_t yMax1 = 1.25 * h1->GetMaximum();
+                Double_t yMax1 = 1.3 * h1->GetMaximum();
 
-                TLegend *leg = new TLegend(0.80, 0.70, 0.90, 0.90);
-                leg->SetBorderSize(1); 
-                leg->SetMargin(0.45);
-                leg->SetFillColorAlpha(kWhite, 0.8);
-                leg->SetTextSize(0.030);            // force readable text
-                leg->SetTextFont(42);
-                sum->SetLineColor(kRed); 
-                sum->SetLineWidth(2); 
-                sum->SetNpx(500); 
-                sum->Draw("same");
-                leg->AddEntry(sum, "Sum", "l");
+                TLegend *leg = nullptr;
+                if (drawSum || drawComponents || drawPredictedLines) {
+                    leg = new TLegend(0.80, 0.70, 0.90, 0.90);
+                    leg->SetBorderSize(1); 
+                    leg->SetMargin(0.45);
+                    leg->SetFillColorAlpha(kWhite, 0.8);
+                    leg->SetTextSize(0.030);// force readable text
+                    leg->SetTextFont(42);
+                }
+                if (drawSum) {
+                    sum->SetLineColor(kRed); 
+                    sum->SetLineWidth(2); 
+                    sum->SetNpx(500); 
+                    sum->Draw("same");
+                    if (leg) leg->AddEntry(sum, "Sum", "l");
+                }
 
+                // vertical lines at predicted peak positions
+                if (drawPredictedLines) {
+                    std::vector<TString> addedPredLabels;
+                    if (!manualPredictPeaks) {
+                        for (const auto &pk : merged) {
+                            Double_t muPred = pk.mu;
+                            if (muPred < xMin || muPred > xMax) continue;
+
+                            TLine *l = new TLine(muPred, 0.0, muPred, yMax1);
+                            Int_t col = kGray+2;
+                            TString label = "Pred.";
+
+                            // choose color from merged species content
+                            if (!pk.merged_ids.empty()) {
+                                std::vector<Int_t> ids = pk.merged_ids;
+                                std::sort(ids.begin(), ids.end());
+                                ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+
+                                const Bool_t hasMu = std::find(ids.begin(), ids.end(), 1) != ids.end();
+                                const Bool_t hasPi = std::find(ids.begin(), ids.end(), 2) != ids.end();
+
+                                if (hasMu && hasPi) col = help->colors[1];   // use mu color for mu+pi
+                                else col = help->colors[ids[0]];
+
+                                if ((int)ids.size() == 1) {
+                                    label = help->pCodes[ids[0]];
+                                } else {
+                                    label = "";
+                                    for (size_t j = 0; j < ids.size(); ++j) {
+                                        if (j) label += " + ";
+                                        label += help->pCodes[ids[j]];
+                                    }
+                                }
+                            }
+
+                            l->SetLineColor(col);
+                            l->SetLineStyle(2);   // dashed
+                            l->SetLineWidth(2);
+                            l->Draw("same");
+
+                            if (leg && !drawComponents) {
+                                Bool_t alreadyAdded = false;
+                                for (const auto &lab : addedPredLabels) {
+                                    if (lab == label) {
+                                        alreadyAdded = true;
+                                        break;
+                                    }
+                                }
+                                if (!alreadyAdded) {
+                                    leg->AddEntry(l, label, "l");
+                                    addedPredLabels.push_back(label);
+                                }
+                            }
+                        }
+                    } else {
+                        for (Int_t ig = 0; ig < (Int_t)nG; ++ig) {
+                            Double_t muPred = means[ig];
+                            if (muPred < xMin || muPred > xMax) continue;
+
+                            TLine *l = new TLine(muPred, 0.0, muPred, yMax1);
+
+                            Int_t col = kGray+2;
+                            TString label = Form("Peak %d", ig+1);
+                            if (ig < (Int_t)manualPids.size() && !manualPids[ig].empty()) {
+                                const Bool_t hasMu = std::find(manualPids[ig].begin(), manualPids[ig].end(), 1) != manualPids[ig].end();
+                                const Bool_t hasPi = std::find(manualPids[ig].begin(), manualPids[ig].end(), 2) != manualPids[ig].end();
+
+                                if (hasMu && hasPi) col = help->colors[1];
+                                else col = help->colors[manualPids[ig][0]];
+
+                                label = LegendFromPids(manualPids[ig], help);
+                            } else if (ig < (Int_t)manualLabels.size() && manualLabels[ig].Length()) {
+                                label = manualLabels[ig];
+                            }
+
+                            l->SetLineColor(col);
+                            l->SetLineStyle(2);   // dashed
+                            l->SetLineWidth(2);
+                            l->Draw("same");
+
+                            if (leg && !drawComponents) {
+                                Bool_t alreadyAdded = false;
+                                for (const auto &lab : addedPredLabels) {
+                                    if (lab == label) {
+                                        alreadyAdded = true;
+                                        break;
+                                    }
+                                }
+                                if (!alreadyAdded) {
+                                    leg->AddEntry(l, label, "l");
+                                    addedPredLabels.push_back(label);
+                                }
+                            }
+                        }
+                    }
+                }
+                
                 for (Int_t ig = 0; ig < (Int_t)nG; ++ig) {
                     if (sum->GetParameter(3*ig) <= 0) continue;
 
@@ -482,8 +586,11 @@ void nSigma_Plot(){
                     }
                     g->SetLineStyle(2);
                     g->SetNpx(500);
-                    g->Draw("same");
-                    leg->AddEntry(g, label, "l");
+
+                    if (drawComponents) {
+                        g->Draw("same");
+                        leg->AddEntry(g, label, "l");
+                    }
                 }
                 leg->Draw();
                 c->Print(pdfName);
