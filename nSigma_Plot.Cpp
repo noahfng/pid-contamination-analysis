@@ -89,8 +89,7 @@ void nSigma_Plot(){
     // histogram & slicing config
     const Int_t nBins = 500;
     const Double_t xMin = -10.0, xMax = 12.0;
-    const Double_t pStart = 0.35, pEnd = 0.45; // momentum slicing (GeV/c)
-    const Double_t step = 0.1; // slice width (GeV/c)
+    const Double_t pStart = 0.35, pEnd = 0.45, step = 0.1; // momentum slicing (GeV/c)
 
     // peak finding & fitting config
     const Double_t muWindow = 2.0; // ±window for μ during fit init
