@@ -25,6 +25,7 @@
 #include <helpers.h>    // project-specific: masses, charges, colors, Bethe–Bloch
 #include <covarianceMatrix.h>
 
+// small text-formatting utilities for logging and table generation
 static std::string vec_to_txt(const std::vector<Double_t>& v)
 {
     std::ostringstream os;
@@ -90,12 +91,15 @@ static std::string labeled_mat_to_txt(const std::vector<TString>& labels, const 
     return os.str();
 }
 
-static std::string fmt_pm(Double_t v, Double_t e, Int_t prec = 6, Bool_t sci = kFALSE)
+static std::string fmt_pm_aligned(Double_t v, Double_t e, Int_t prec_v = 6, Int_t prec_e = 6, Bool_t sci = kFALSE)
 {
     std::ostringstream os;
     if (sci) os << std::scientific;
     else     os << std::fixed;
-    os << std::setprecision(prec) << v << " ± " << e;
+
+    os << std::setprecision(prec_v) << v
+       << " ± "
+       << std::setprecision(prec_e) << e;
     return os.str();
 }
 
@@ -103,37 +107,37 @@ static std::string species_table_to_txt(const std::vector<TString>& labels, cons
 {
     std::ostringstream os;
 
-    const int w_species = 14;
-    const int w_mean    = 28;
-    const int w_sigma   = 28;
-    const int w_amp     = 32;
-    const int w_area    = 32;
+    const int w_species = 12;
+    const int w_mean    = 30;
+    const int w_sigma   = 30;
+    const int w_amp     = 34;
+    const int w_area    = 34;
+    const std::string sep = "  ";
 
     os << std::left
-       << std::setw(w_species) << "species"
-       << std::setw(w_mean)    << "mean"
-       << std::setw(w_sigma)   << "sigma"
-       << std::setw(w_amp)     << "amp"
+       << std::setw(w_species) << "species" << sep
+       << std::setw(w_mean)    << "mean"    << sep
+       << std::setw(w_sigma)   << "sigma"   << sep
+       << std::setw(w_amp)     << "amp"     << sep
        << std::setw(w_area)    << "area"
        << "\n";
 
-    os << std::string(w_species + w_mean + w_sigma + w_amp + w_area, '-') << "\n";
+    os << std::string(
+            w_species + w_mean + w_sigma + w_amp + w_area + 4 * sep.size(),
+            '-'
+         ) << "\n";
 
     for (size_t i = 0; i < labels.size(); ++i) {
-        TString lab = labels[i];
-
-        std::string mean_s  = fmt_pm(means[i],  mean_errs[i],  6, kFALSE);
-        std::string sigma_s = fmt_pm(sigmas[i], sigma_errs[i], 6, kFALSE);
-
-        // amplitudes/areas are usually large -> scientific often looks cleaner
-        std::string amp_s   = fmt_pm(amps[i],   amp_errs[i],   6, kTRUE);
-        std::string area_s  = fmt_pm(areas[i],  area_errs[i],  6, kTRUE);
+        const std::string mean_s  = fmt_pm_aligned(means[i],  mean_errs[i],  6, 6, kFALSE);
+        const std::string sigma_s = fmt_pm_aligned(sigmas[i], sigma_errs[i], 6, 6, kFALSE);
+        const std::string amp_s   = fmt_pm_aligned(amps[i],   amp_errs[i],   6, 6, kTRUE);
+        const std::string area_s  = fmt_pm_aligned(areas[i],  area_errs[i],  6, 6, kTRUE);
 
         os << std::left
-           << std::setw(w_species) << lab.Data()
-           << std::setw(w_mean)    << mean_s
-           << std::setw(w_sigma)   << sigma_s
-           << std::setw(w_amp)     << amp_s
+           << std::setw(w_species) << labels[i].Data() << sep
+           << std::setw(w_mean)    << mean_s           << sep
+           << std::setw(w_sigma)   << sigma_s          << sep
+           << std::setw(w_amp)     << amp_s            << sep
            << std::setw(w_area)    << area_s
            << "\n";
     }
@@ -141,44 +145,74 @@ static std::string species_table_to_txt(const std::vector<TString>& labels, cons
     return os.str();
 }
 
+// Per-window output for contamination analysis around each fitted peak
 struct WindowScanEntry {
     Double_t nsigma;
-    std::vector<std::vector<Double_t>> frac;     
-    std::vector<Double_t> purity;                 
-    std::vector<Double_t> contamination;        
-    std::vector<Double_t> efficiency;             
+    std::vector<Double_t> target_yield;
+    std::vector<Double_t> target_yield_err;
+
+    std::vector<Double_t> other_yield;
+    std::vector<Double_t> other_yield_err;
+
+    std::vector<Double_t> bg_yield;
+    std::vector<Double_t> bg_yield_err;
+
+    std::vector<Double_t> total_yield;
+    std::vector<Double_t> total_yield_err;
+
+    std::vector<Double_t> contamination;
+    std::vector<Double_t> contamination_err;
 };
+
 using WindowScan = std::vector<WindowScanEntry>;
 
 static std::string scan_table_to_txt(const std::vector<TString>& labels, const WindowScan& scan)
 {
     std::ostringstream os;
+    os << std::fixed << std::setprecision(6);
+
+    const int w_species = 12;
+    const int w_yield   = 34;
+    const int w_cont    = 26;
+    const std::string sep = "  ";
 
     for (const auto& entry : scan) {
         os << "nSigmaWindow = " << entry.nsigma << "\n";
+
         os << std::left
-           << std::setw(14) << "species"
-           << std::setw(16) << "purity"
-           << std::setw(16) << "contamination"
-           << std::setw(16) << "efficiency"
+           << std::setw(w_species) << "species"       << sep
+           << std::setw(w_yield)   << "target_yield"  << sep
+           << std::setw(w_yield)   << "other_yield"   << sep
+           << std::setw(w_yield)   << "bg_yield"      << sep
+           << std::setw(w_yield)   << "total_yield"   << sep
+           << std::setw(w_cont)    << "contamination"
            << "\n";
-        os << std::string(14 + 16 + 16 + 16, '-') << "\n";
+
+        os << std::string(
+                w_species + 4*w_yield + w_cont + 5*sep.size(),
+                '-'
+             ) << "\n";
 
         for (size_t i = 0; i < labels.size(); ++i) {
             TString lab = (i < labels.size()) ? labels[i] : Form("peak_%zu", i);
+
             os << std::left
-               << std::setw(14) << lab.Data()
-               << std::setw(16) << entry.purity[i]
-               << std::setw(16) << entry.contamination[i]
-               << std::setw(16) << entry.efficiency[i]
+               << std::setw(w_species) << lab.Data() << sep
+               << std::setw(w_yield)   << fmt_pm_aligned(entry.target_yield[i], entry.target_yield_err[i], 6, 6, kFALSE) << sep
+               << std::setw(w_yield)   << fmt_pm_aligned(entry.other_yield[i],  entry.other_yield_err[i],  6, 6, kFALSE) << sep
+               << std::setw(w_yield)   << fmt_pm_aligned(entry.bg_yield[i],     entry.bg_yield_err[i],     6, 6, kFALSE) << sep
+               << std::setw(w_yield)   << fmt_pm_aligned(entry.total_yield[i],  entry.total_yield_err[i],  6, 6, kFALSE) << sep
+               << std::setw(w_cont)    << fmt_pm_aligned(entry.contamination[i], entry.contamination_err[i], 6, 6, kFALSE)
                << "\n";
         }
+
         os << "\n";
     }
 
     return os.str();
 }
 
+// Environment variable readers so the macor can be steered without editing code (will return fallback value if variable is not set or invalid)
 static inline Double_t getenv_double(const Char_t* k, Double_t fallback){
   const Char_t* v = gSystem->Getenv(k);
   if(!v || !*v) return fallback;
@@ -264,7 +298,7 @@ void nSigma_Plot_ExclComp(){
     // peak finding & fitting config
     const Double_t muWindow = 2.0; // ±window for μ during fit init
     const Double_t mergeDistanceFactor = 1.0; // merge seeds if |Δμ| < f·max(σ)
-    const Double_t nEntriesLimit = 1e8;
+    const Double_t nEntriesLimit = 1e10;
 
     // Analysis modes
     const Bool_t FitKaonExclComp = getenv_bool("FITKAONEXCLCOMP", true);
@@ -302,6 +336,7 @@ void nSigma_Plot_ExclComp(){
     gROOT->SetBatch(!(manualPredictPeaks && interactiveManualPeaks)); // if manual peak prediction is on, default to interactive mode (unless explicitly disabled)
     gStyle->SetOptStat(0);
 
+    // build chain and set branch addresses
     TChain chain("twotauchain");
     AddTrees(chain, help->base_dir);
 
@@ -335,18 +370,30 @@ void nSigma_Plot_ExclComp(){
         summaryLog.imbue(std::locale::classic());
         summaryLog << std::fixed << std::setprecision(6);
     }
-    
+    // Main worker lambda:
+    //   - chooses TPC or TOF nSigma as the plotted observable
+    //   - fills spectra with and without a TOF-based exclusion
+    //   - fits the pair of histograms simultaneously
+    //   - writes plots + optional log output
     auto drawNSigma = [&](Bool_t isTPCmode, Double_t sigmaExcl) {
         const Double_t pMin = isTPCmode ? pStart : std::max(pStart, 0.4);
         const Int_t nSteps = Int_t(std::floor((pEnd - pMin) / step + 0.5));
+        
         std::vector<Double_t> pEdges(nSteps+1);
         for (Int_t i = 0; i <= nSteps; ++i) pEdges[i] = pMin + i * step;
-        TString suffix = isTPCmode ? "TPC" : "TOF";    
+
+        TString suffix = isTPCmode ? "TPC" : "TOF";  
+
+        // species used only for the exclusion cut
         enum ExclType{KaonExcl = 3, ProtExcl = 4};
         std::vector<std::pair<ExclType, Bool_t>> modes = {{KaonExcl, FitKaonExclComp}, {ProtExcl, FitProtonExclComp}};
         for (auto [excl, doThis]: modes) {
             if(!doThis) continue;
+
             const Char_t* name = (excl==KaonExcl ? "KaonExcl" : "ProtonExcl");
+
+            // h_no = inclusive histogram
+            // h_w = same histogram after excluding tracks compatible with 'excl' in TOF
             std::vector<std::vector<TH1D*>> h_no(nParts, std::vector<TH1D*>(nSteps,nullptr));
             std::vector<std::vector<TH1D*>> h_w(nParts, std::vector<TH1D*>(nSteps,nullptr));
 
@@ -385,11 +432,15 @@ void nSigma_Plot_ExclComp(){
                 }
             }       
 
+            // Fill the inclusive / excluded histograms and covariance matrix objects
             for (Long64_t ev = 0; ev < nEntries; ++ev) {
                 chain.GetEntry(ev);
                 for (Int_t t = 0; t < NtrkMax; ++t) {
                     Double_t pG = inner[t];
+
+                    // Require a valid TOF momentum estimate because the exclusion variable lives in TOF nSigma 
                     if (tofExpMom[t] < 0) continue;
+
                     Int_t bin = std::lower_bound(pEdges.begin(), pEdges.end(), pG) - pEdges.begin() - 1;
                     if (bin<0 || bin>=nSteps) continue;
 
@@ -399,6 +450,7 @@ void nSigma_Plot_ExclComp(){
 
                         h_no[pid][bin]->Fill(val);
 
+                        // Exclusion: keep track only if it is not within sigmaExcl of the excluded species in TOF.
                         if (TMath::IsNaN(tofNS[excl][t]) || TMath::Abs(tofNS[excl][t])>=sigmaExcl) h_w[pid][bin]->Fill(val);
 
                         auto nsVals = new std::vector<Double_t>(); 
@@ -408,8 +460,12 @@ void nSigma_Plot_ExclComp(){
 
                         nsVals->clear(); 
                         toadd->clear();
+
+                        // Entry 0 = inclusive histogram, always filled.
                         nsVals->push_back(val);  
                         toadd->push_back(true);
+
+                        // Entry 1 = excluded histogram, filled only if the track passes the TOF nSigma exclusion cut.
                         const Bool_t passExcl = (TMath::IsNaN(tofNS[excl][t]) || TMath::Abs(tofNS[excl][t]) >= sigmaExcl);
                         if (passExcl) {
                             nsVals->push_back(val); 
@@ -455,6 +511,8 @@ void nSigma_Plot_ExclComp(){
                     TH1D* h2 = nullptr;
                     h1 = h_no[ref][i];
                     h2 = h_w[ref][i];
+
+                    // If no fit overlays are requested, just draw the raw data and continue to the next iteration
                     if (!drawSum && !drawComponents && !drawPredictedLines) {
                         c->cd();
                         c->Clear();
@@ -466,20 +524,24 @@ void nSigma_Plot_ExclComp(){
                         c->Print(pdfName);
                         continue;
                     }
+                    
+                    // Peak seed used to intialize the simulaneous fit
                     struct Peak {Double_t A, mu, sigma; Int_t id; std::vector<Int_t> merged_ids;Bool_t alwaysSeparate = false;};
                     std::vector<Peak> seeds;
                     Double_t sliceMin = pEdges[i];
                     Double_t sliceMax = pEdges[i+1];
                     Double_t pMid = 0.5 * (sliceMin + sliceMax);
 
+                    // Buil expected peak positions from detector response
                     for (Int_t hyp = 0; hyp < nParts; ++hyp) {
                         Double_t hypMass = help->pMasses[hyp];
                         Double_t sigma0, mu;
                         if (isTPCmode) {
+                            // For TPC, convert expected dE/dx separation into an nSigma position / width. 
                             Double_t dRef = help->getTPCSignal(pMid * 1000, help->pMasses[ref], 1.0);
                             Double_t dHyp = help->getTPCSignal(pMid * 1000, hypMass, 1.0);
-                            if (dRef < 0 || dHyp < 0) 
-                                continue;
+                            
+                            if (dRef < 0 || dHyp < 0) continue;
 
                             Double_t resoHyp = help->resoTPC[hyp][ref];
                             Double_t resoRef = help->resoTPC[ref][hyp];
@@ -487,6 +549,7 @@ void nSigma_Plot_ExclComp(){
                             mu     = (dHyp/dRef - 1.0) / resoRef;
                         }
                         else {
+                            // For TOF, the expected nSigma separation comes from beta differences.
                             Double_t bRef = help->beta(help->pMasses[ref], pMid*1000);
                             Double_t bHyp = help->beta(help->pMasses[hyp], pMid*1000);
 
@@ -504,6 +567,8 @@ void nSigma_Plot_ExclComp(){
                         seeds.push_back({amp, mu, sigma0, hyp, {hyp}, false});
                     }
 
+                    // Explicitly merge mu and pi into one effective peak if both are present.
+                    // This is separate from the generic proximity-based merging below.                    
                     Peak muPiCombined{0,0,0,-1,{},false};
                     Bool_t sawMu = false, sawPi = false;
                     for (auto it = seeds.begin(); it != seeds.end();) {
@@ -536,12 +601,14 @@ void nSigma_Plot_ExclComp(){
                         seeds.push_back(muPiCombined);
                     }
 
+                    // Prevent merging away the reference peak when relevant
                     for (auto &s : seeds) {
                         if (std::find(s.merged_ids.begin(), s.merged_ids.end(), ref) != s.merged_ids.end()) {
                             s.alwaysSeparate = true;
                         }
                     }
 
+                    // Generic merging of nearby predicted peaks
                     std::sort(seeds.begin(), seeds.end(), [](auto &a, auto &b){ return a.mu < b.mu; });
                     std::vector<Peak> merged;
                     for (auto &s : seeds) {
@@ -563,6 +630,7 @@ void nSigma_Plot_ExclComp(){
                         }
                     }
 
+                    // Optional manual override of the peak model
                     Int_t manualNGauss = 0;
                     std::vector<Double_t> manualMeans, manualSigmas, manualAmps;
                     std::vector<TString> manualLabels;
@@ -632,6 +700,7 @@ void nSigma_Plot_ExclComp(){
                         }
                     }
 
+                    // Final seed list used for the fit: manual if requested and valid, otherwise the automatically merged peaks
                     size_t nG;
                     std::vector<Double_t> seedMeans, seedSigmas, seedAmps;
                     if (manualPredictPeaks && manualNGauss > 0) {
@@ -652,6 +721,7 @@ void nSigma_Plot_ExclComp(){
                     }
                     if (nG < 1) { c->Print(pdfName); continue;}
 
+                    // Human-readable lables for the fitted peaks
                     std::vector<TString> peakLabels(nG);
                     for (Int_t ig = 0; ig < (Int_t)nG; ++ig) {
                         if (!manualPredictPeaks) {
@@ -667,6 +737,7 @@ void nSigma_Plot_ExclComp(){
                         }
                     }
 
+                    // Optional vertical lines showin predicted/manuel seed positions
                     auto drawPredictedPeakLines = [&](Double_t yMax, TLegend* leg) {
                     if (!drawPredictedLines) return;
                     std::vector<TString> addedPredLabels;
@@ -769,6 +840,10 @@ void nSigma_Plot_ExclComp(){
                         }
                     };
 
+                    // Build simultaneous model:
+                    // h1 = sum_i G_i(A1_i, mu_i, sigma_i) + const_bg1
+                    // h2 = sum_i G_i(A2_i, mu_i, sigma_i) + const_bg2
+                    // Means and sigmas are shared; amplitudes/backgrounds differ between inclusive and excluded spectra.
                     std::ostringstream form;
                     for (size_t i = 0; i < nG; ++i) {
                         if (i) form << "+";
@@ -786,10 +861,13 @@ void nSigma_Plot_ExclComp(){
                     const Int_t offS = 3*nG;
                     const Int_t offP1 = 4*nG;
                     const Int_t offP2 = 4*nG + 1;
+
                     sum->SetParLimits(offP1, 0, 10.0);
                     sum->SetParameter(offP1, 1.0);
                     sum->SetParLimits(offP2, 0, 10.0);
                     sum->SetParameter(offP2, 1.0);
+
+                    // Initialize fit parameters with either the manual or automatically merged peak values
                     for (size_t i = 0; i < nG; ++i) {
                         if (manualPredictPeaks && manualNGauss > 0) {
                             Double_t mu0 = seedMeans[i];
@@ -851,96 +929,185 @@ void nSigma_Plot_ExclComp(){
                         err[i] = sum->GetParError(i);
                     }                    
 
-                    struct IntDerivs { double dA, dMu, dSig; };
-                    auto dGaussInt = [&](double A, double mu, double sig, double a, double b)->IntDerivs {
-                        const double ea = std::exp(-0.5 * std::pow((a-mu)/sig, 2.0));
-                        const double eb = std::exp(-0.5 * std::pow((b-mu)/sig, 2.0));
-                        const double I1 = help->GaussIntegral(1.0, mu, sig, a, b); 
-                        const double dI_dMu = A * (ea - eb);                      
-                        const double I = help->GaussIntegral(A, mu, sig, a, b);
-                        const double dI_dSig = (I / sig) + (A / sig)*((a - mu) * ea - (b - mu) * eb); 
-                        return {I1, dI_dMu, dI_dSig};
-                    };
-
+                    // Compute yields and contamination in ±nSigma windows around each fitted peak
                     auto computeWindowScan = [&](Int_t whichHist) -> WindowScan {
                         const Int_t offA = (whichHist == 0 ? offA1 : offA2);
                         const Int_t offP = (whichHist == 0 ? offP1 : offP2);
 
                         WindowScan out;
 
+                        struct WindowVals {
+                            Double_t target = std::numeric_limits<Double_t>::quiet_NaN();
+                            Double_t other = std::numeric_limits<Double_t>::quiet_NaN();
+                            Double_t bg = std::numeric_limits<Double_t>::quiet_NaN();
+                            Double_t total = std::numeric_limits<Double_t>::quiet_NaN();
+                            Double_t cont = std::numeric_limits<Double_t>::quiet_NaN();
+                        };
+
+                        auto eval_window_vals = [&](const std::vector<Double_t>& pvar, Double_t nsigma, Int_t ii) -> WindowVals {
+                            WindowVals outv;
+
+                            const Double_t Ai = pvar[offA + ii];
+                            const Double_t mui  = pvar[offM + ii];
+                            const Double_t sigi = pvar[offS + ii];
+
+                            if (!(Ai > 0.0) || !(sigi > 0.0)) return outv;
+
+                            const Double_t a = mui - nsigma * sigi;
+                            const Double_t b = mui + nsigma * sigi;
+
+                            Double_t I_target = 0.0;
+                            Double_t I_other = 0.0;
+
+                            for (Int_t j = 0; j < nG; ++j) {
+                                const Double_t Aj = pvar[offA + j];
+                                const Double_t muj = pvar[offM + j];
+                                const Double_t sigj = pvar[offS + j];
+
+                                if (!(Aj > 0.0) || !(sigj > 0.0)) continue;
+
+                                const Double_t Ij = help->GaussIntegral(Aj, muj, sigj, a, b);
+
+                                if (j == ii) I_target += Ij;
+                                else I_other += Ij;
+                            }
+
+                            const Double_t I_bg  = pvar[offP] * (b - a);
+                            const Double_t I_tot = I_target + I_other + I_bg;
+
+                            outv.target = I_target;
+                            outv.other = I_other;
+                            outv.bg = I_bg;
+                            outv.total = I_tot;
+                            outv.cont = (I_tot > 0.0) ? (I_other + I_bg) / I_tot : std::numeric_limits<Double_t>::quiet_NaN();
+                            return outv;
+                        };
+
+                        // Numerical derivativ step size for error propagation 
+                        auto step_for = [&](Int_t ipar, Double_t pval, Double_t perr) -> Double_t {
+                            Double_t h = 0.0;
+                            if (perr > 0.0 && std::isfinite(perr)) h = 0.25 * perr;
+                            else h = std::max(1e-6, 1e-4 * std::abs(pval));
+
+                            // avoid zero step
+                            h = std::max(h, 1e-8);
+
+                            // keep sigma variations positive
+                            if (ipar >= offS && ipar < offS + nG) {
+                                h = std::min(h, 0.45 * std::max(1e-8, pval));
+                            }
+                            return h;
+                        };
+
                         for (Double_t nsigma : sigmaScan) {
-                            std::vector<std::vector<Double_t>> frac(
-                                nG, std::vector<Double_t>(nG, std::numeric_limits<Double_t>::quiet_NaN())
-                            );
-                            std::vector<Double_t> purity(
-                                nG, std::numeric_limits<Double_t>::quiet_NaN()
-                            );
-                            std::vector<Double_t> contamination(
-                                nG, std::numeric_limits<Double_t>::quiet_NaN()
-                            );
-                            std::vector<Double_t> efficiency(
-                                nG, std::numeric_limits<Double_t>::quiet_NaN()
-                            );
+                            std::vector<Double_t> target_yield(nG, std::numeric_limits<Double_t>::quiet_NaN());
+                            std::vector<Double_t> target_yield_err(nG, std::numeric_limits<Double_t>::quiet_NaN());
+
+                            std::vector<Double_t> other_yield(nG, std::numeric_limits<Double_t>::quiet_NaN());
+                            std::vector<Double_t> other_yield_err(nG, std::numeric_limits<Double_t>::quiet_NaN());
+
+                            std::vector<Double_t> bg_yield(nG, std::numeric_limits<Double_t>::quiet_NaN());
+                            std::vector<Double_t> bg_yield_err(nG, std::numeric_limits<Double_t>::quiet_NaN());
+
+                            std::vector<Double_t> total_yield(nG, std::numeric_limits<Double_t>::quiet_NaN());
+                            std::vector<Double_t> total_yield_err(nG, std::numeric_limits<Double_t>::quiet_NaN());
+
+                            std::vector<Double_t> contamination(nG, std::numeric_limits<Double_t>::quiet_NaN());
+                            std::vector<Double_t> contamination_err(nG, std::numeric_limits<Double_t>::quiet_NaN());
 
                             for (Int_t ii = 0; ii < nG; ++ii) {
-                                const Double_t Ai   = par[offA + ii];
-                                const Double_t mui  = par[offM + ii];
-                                const Double_t sigi = par[offS + ii];
+                                const WindowVals base = eval_window_vals(par, nsigma, ii);
 
-                                if (!(Ai > 0.0) || !(sigi > 0.0)) continue;
+                                target_yield[ii] = base.target;
+                                other_yield[ii] = base.other;
+                                bg_yield[ii] = base.bg;
+                                total_yield[ii] = base.total;
+                                contamination[ii] = base.cont;
 
-                                const Double_t a = mui - nsigma * sigi;
-                                const Double_t b = mui + nsigma * sigi;
+                                if (!std::isfinite(base.total)) continue;
 
-                                std::vector<Double_t> I(nG, 0.0);
-                                Double_t Stot = 0.0;
+                                Double_t var_target = 0.0;
+                                Double_t var_other = 0.0;
+                                Double_t var_bg = 0.0;
+                                Double_t var_total = 0.0;
+                                Double_t var_cont = 0.0;
 
-                                for (Int_t j = 0; j < nG; ++j) {
-                                    const Double_t Aj   = par[offA + j];
-                                    const Double_t muj  = par[offM + j];
-                                    const Double_t sigj = par[offS + j];
+                                // Active parameters for one histogram:
+                                // amplitudes of that histogram + shared means/sigmas + its own background
+                                std::vector<Int_t> activePars;
+                                for (Int_t j = 0; j < nG; ++j) activePars.push_back(offA + j);
+                                for (Int_t j = 0; j < nG; ++j) activePars.push_back(offM + j);
+                                for (Int_t j = 0; j < nG; ++j) activePars.push_back(offS + j);
+                                activePars.push_back(offP);
 
-                                    if (!(Aj > 0.0) || !(sigj > 0.0)) {
-                                        I[j] = 0.0;
-                                        continue;
+                                for (Int_t ipar : activePars) {
+                                    const Double_t pk = par[ipar];
+                                    const Double_t ek = err[ipar];
+
+                                    if (!(ek > 0.0) || !std::isfinite(ek)) continue;
+
+                                    const Double_t h = step_for(ipar, pk, ek);
+                                    if (!(h > 0.0)) continue;
+
+                                    std::vector<Double_t> pplus  = par;
+                                    std::vector<Double_t> pminus = par;
+
+                                    pplus[ipar] = pk + h;
+                                    pminus[ipar] = pk - h;
+
+                                    // guard against nonphysical sigma / negative background in derivative eval
+                                    if (ipar >= offS && ipar < offS + nG) {
+                                        pplus[ipar] = std::max(pplus[ipar],  1e-8);
+                                        pminus[ipar] = std::max(pminus[ipar], 1e-8);
                                     }
 
-                                    I[j] = help->GaussIntegral(Aj, muj, sigj, a, b);
-                                    Stot += I[j];
+                                    const WindowVals vp = eval_window_vals(pplus,  nsigma, ii);
+                                    const WindowVals vm = eval_window_vals(pminus, nsigma, ii);
+
+                                    auto deriv = [&](Double_t fp, Double_t fm) -> Double_t {
+                                        if (!std::isfinite(fp) || !std::isfinite(fm)) return 0.0;
+                                        return (fp - fm) / (2.0 * h);
+                                    };
+
+                                    const Double_t d_target = deriv(vp.target, vm.target);
+                                    const Double_t d_other = deriv(vp.other,  vm.other);
+                                    const Double_t d_bg = deriv(vp.bg,     vm.bg);
+                                    const Double_t d_total = deriv(vp.total,  vm.total);
+                                    const Double_t d_cont = deriv(vp.cont,   vm.cont);
+
+                                    var_target += d_target * d_target * ek * ek;
+                                    var_other += d_other * d_other * ek * ek;
+                                    var_bg += d_bg * d_bg * ek * ek;
+                                    var_total += d_total * d_total * ek * ek;
+                                    var_cont += d_cont * d_cont * ek * ek;
                                 }
 
-                                const Double_t B = par[offP] * (b - a);
-                                Stot += B;
-
-                                const Double_t Itarget = I[ii];
-                                const Double_t ItargetTot = help->GaussIntegral(Ai, mui, sigi, -1e9, 1e9);
-
-                                if (Stot > 0.0) {
-                                    for (Int_t j = 0; j < nG; ++j) {
-                                        frac[ii][j] = I[j] / Stot;
-                                    }
-
-                                    purity[ii] = Itarget / Stot;
-                                    contamination[ii] = 1.0 - purity[ii];
-                                }
-
-                                if (ItargetTot > 0.0) {
-                                    efficiency[ii] = Itarget / ItargetTot;
-                                }
+                                target_yield_err[ii] = std::sqrt(std::max(0.0, var_target));
+                                other_yield_err[ii] = std::sqrt(std::max(0.0, var_other));
+                                bg_yield_err[ii] = std::sqrt(std::max(0.0, var_bg));
+                                total_yield_err[ii] = std::sqrt(std::max(0.0, var_total));
+                                contamination_err[ii] = std::sqrt(std::max(0.0, var_cont));
                             }
 
                             out.push_back(WindowScanEntry{
                                 nsigma,
-                                std::move(frac),
-                                std::move(purity),
+                                std::move(target_yield),
+                                std::move(target_yield_err),
+                                std::move(other_yield),
+                                std::move(other_yield_err),
+                                std::move(bg_yield),
+                                std::move(bg_yield_err),
+                                std::move(total_yield),
+                                std::move(total_yield_err),
                                 std::move(contamination),
-                                std::move(efficiency)
+                                std::move(contamination_err)
                             });
                         }
 
                         return out;
                     };
-                    
+
+                    // Diagnostic of the final fit
                     auto [D1,N1] = help->PoissonDeviance(h1, 0, par, nG, offA1, offA2, offM, offM, offS, offS, offP1, offP2);
                     auto [D2,N2] = help->PoissonDeviance(h2, 1, par, nG, offA1, offA2, offM, offM, offS, offS, offP1, offP2);
                     const Double_t D = D1 + D2;
@@ -951,6 +1118,7 @@ void nSigma_Plot_ExclComp(){
                     const Int_t ndf  = sum->GetNDF();
                     const Double_t pval = TMath::Prob(chi2, ndf);
 
+                    // Total Gaussian areas in the two histograms
                     std::vector<Double_t> areas_noK(nG), areas_wK(nG), err_areas_noK(nG), err_areas_wK(nG);
                     const Double_t factor = TMath::Sqrt(2*TMath::Pi());
                     for (Int_t ig = 0; ig < nG; ++ig) {
@@ -1000,6 +1168,7 @@ void nSigma_Plot_ExclComp(){
                     auto scan_no = computeWindowScan(0); 
                     auto scan_w = computeWindowScan(1); 
 
+                    // optional logging of the fit results and diagnostics in txt format for later analysis
                     if (writeSummaryLog && summaryLog.is_open()) {
                         summaryLog
                             << "mode: " << suffix.Data() << "\n"
@@ -1018,7 +1187,7 @@ void nSigma_Plot_ExclComp(){
                                                     areas_noK, err_areas_noK)
                             << "\n"
                             << "background: " << bkg_noExcl << " ± " << ebkg_noExcl << "\n\n"
-                            << "purity_contamination_scan:\n"
+                            << "window_yield_scan:\n"
                             << scan_table_to_txt(peakLabels, scan_no)
                             << "----------------------------------------\n\n";
 
@@ -1042,11 +1211,12 @@ void nSigma_Plot_ExclComp(){
                                                     areas_wK, err_areas_wK)
                             << "\n"
                             << "background: " << bkg_wExcl << " ± " << ebkg_wExcl << "\n\n"
-                            << "purity_contamination_scan:\n"
+                            << "window_yield_scan:\n"
                             << scan_table_to_txt(peakLabels, scan_w)
                             << "----------------------------------------\n\n";
                     }
 
+                    // Build curves for the total fit and each individual component
                     const Int_t nPoints = 500; 
                     Double_t dx = (xMax - xMin)/(nPoints-1);
                     std::vector<Double_t> xv(nPoints), y1(nPoints), y2(nPoints);
@@ -1228,6 +1398,7 @@ void nSigma_Plot_ExclComp(){
             }
         }
     };
+    // Run over the requested sigma exclusion values
     for (Double_t s : sigmaExclList) {
         if (plotTPC) drawNSigma(true, s);
         if (plotTOF) drawNSigma(false, s);
