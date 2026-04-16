@@ -7,6 +7,7 @@
 #include <string>
 #include <sstream>
 
+#include "TGraph.h"
 #include "TROOT.h"
 #include "TStyle.h"
 #include "TMath.h"
@@ -23,146 +24,121 @@
 #include <helpers.h>    // project-specific: masses, charges, colors, Bethe–Bloch
 #include <covarianceMatrix.h>
 
-struct ndJsonLogger {
-    std::ofstream f;
-
-    void open(const std::string& path) {
-        f.open(path, std::ios::out | std::ios::app);
-        f.imbue(std::locale::classic());
-        f << std::fixed << std::setprecision(4);
+static std::string vec_to_txt(const std::vector<Double_t>& v)
+{
+    std::ostringstream os;
+    os << "[";
+    for (size_t i = 0; i < v.size(); ++i) {
+        if (i) os << ", ";
+        if (std::isfinite(v[i])) os << v[i];
+        else os << "null";
     }
+    os << "]";
+    return os.str();
+}
 
-    void write_config(Int_t nBins, Double_t xMin, Double_t xMax,
-                      Double_t pStart, Double_t pEnd, Double_t step,
-                      Double_t muWindow, Double_t mergeDistanceFactor,
-                      Double_t nEntries, Bool_t FitKaonExclComp,
-                      Bool_t FitProtonExclComp, Bool_t plotTPC, Bool_t plotTOF, Bool_t PeakZoom, Bool_t manualPredictPeaks, Double_t eigenThr, Bool_t useOffDiag)
-    {
-        f << "{\n"
-          << "\"type\":\"config\",\n"
-          << "\"nBins\":" << nBins << ",\n"
-          << "\"xMin\":" << xMin << ",\n"
-          << "\"xMax\":" << xMax << ",\n"
-          << "\"pStart\":" << pStart << ",\n"
-          << "\"pEnd\":" << pEnd << ",\n"
-          << "\"step\":" << step << ",\n"
-          << "\"muWindow\":" << muWindow << ",\n"
-          << "\"mergeDistanceFactor\":" << mergeDistanceFactor << ",\n"
-          << "\"nEntries\":" << nEntries << ",\n"
-          << "\"FitKaonExclComp\":" << (FitKaonExclComp?"true":"false") << ",\n"
-          << "\"FitProtonExclComp\":" << (FitProtonExclComp?"true":"false") << ",\n"
-          << "\"plotTPC\":" << (plotTPC?"true":"false") << ",\n"
-          << "\"plotTOF\":" << (plotTOF?"true":"false") << ",\n"
-          << "\"PeakZoom\":" << (PeakZoom?"true":"false") << ",\n"
-          << "\"manualPredictPeaks\":" << (manualPredictPeaks?"true":"false")<< ",\n" 
-          << "\"eigenThr\":" << eigenThr << ",\n"                
-          << "\"useOffDiag\":" << (useOffDiag?"true":"false")
-          << "\n}\n\n";
+static std::string mat_to_txt(const std::vector<std::vector<Double_t>>& m)
+{
+    std::ostringstream os;
+    os << "[";
+    for (size_t i = 0; i < m.size(); ++i) {
+        if (i) os << ", ";
+        os << vec_to_txt(m[i]);
     }
+    os << "]";
+    return os.str();
+}
 
-    static void dump_vec(std::ostream& os, const std::vector<Double_t>& v) {
-        os << "[";
-        for (size_t i=0;i<v.size();++i){ if(i) os << ","; os << v[i]; }
-        os << "]";
+static std::string labels_to_txt(const std::vector<TString>& labels)
+{
+    std::ostringstream os;
+    os << "[";
+    for (size_t i = 0; i < labels.size(); ++i) {
+        if (i) os << ", ";
+        os << labels[i].Data();
     }
+    os << "]";
+    return os.str();
+}
 
-    static inline void indent(std::ostream& os, Int_t n) {
-        for (Int_t i = 0; i < n; ++i) os.put(' ');
+static std::string labeled_vec_to_txt(const std::vector<TString>& labels, const std::vector<Double_t>& vals, const std::vector<Double_t>* errs = nullptr)
+{
+    std::ostringstream os;
+    for (size_t i = 0; i < vals.size(); ++i) {
+        TString lab = (i < labels.size()) ? labels[i] : Form("peak_%zu", i);
+        os << "  " << lab.Data() << " : " << vals[i];
+        if (errs && i < errs->size()) os << " ± " << (*errs)[i];
+        os << "\n";
     }
+    return os.str();
+}
 
-    static void dump_row_inline(std::ostream& os, const std::vector<Double_t>& v) {
-        os << "[";
-        for (size_t j = 0; j < v.size(); ++j) {
+static std::string labeled_mat_to_txt(const std::vector<TString>& labels, const std::vector<std::vector<Double_t>>& m)
+{
+    std::ostringstream os;
+    for (size_t i = 0; i < m.size(); ++i) {
+        TString rowlab = (i < labels.size()) ? labels[i] : Form("peak_%zu", i);
+        os << "  from " << rowlab.Data() << " : [";
+        for (size_t j = 0; j < m[i].size(); ++j) {
             if (j) os << ", ";
-            if (std::isfinite(v[j])) os << v[j]; else os << "null";
+            TString collab = (j < labels.size()) ? labels[j] : Form("peak_%zu", j);
+            os << m[i][j];
         }
-        os << "]";
+        os << "]\n";
+    }
+    return os.str();
+}
+
+static std::string fmt_pm(Double_t v, Double_t e, Int_t prec = 6, Bool_t sci = kFALSE)
+{
+    std::ostringstream os;
+    if (sci) os << std::scientific;
+    else     os << std::fixed;
+    os << std::setprecision(prec) << v << " ± " << e;
+    return os.str();
+}
+
+static std::string species_table_to_txt(const std::vector<TString>& labels, const std::vector<Double_t>& means, const std::vector<Double_t>& mean_errs, const std::vector<Double_t>& sigmas, const std::vector<Double_t>& sigma_errs, const std::vector<Double_t>& amps, const std::vector<Double_t>& amp_errs, const std::vector<Double_t>& areas, const std::vector<Double_t>& area_errs)
+{
+    std::ostringstream os;
+
+    const int w_species = 14;
+    const int w_mean    = 28;
+    const int w_sigma   = 28;
+    const int w_amp     = 32;
+    const int w_area    = 32;
+
+    os << std::left
+       << std::setw(w_species) << "species"
+       << std::setw(w_mean)    << "mean"
+       << std::setw(w_sigma)   << "sigma"
+       << std::setw(w_amp)     << "amp"
+       << std::setw(w_area)    << "area"
+       << "\n";
+
+    os << std::string(w_species + w_mean + w_sigma + w_amp + w_area, '-') << "\n";
+
+    for (size_t i = 0; i < labels.size(); ++i) {
+        TString lab = labels[i];
+
+        std::string mean_s  = fmt_pm(means[i],  mean_errs[i],  6, kFALSE);
+        std::string sigma_s = fmt_pm(sigmas[i], sigma_errs[i], 6, kFALSE);
+
+        // amplitudes/areas are usually large -> scientific often looks cleaner
+        std::string amp_s   = fmt_pm(amps[i],   amp_errs[i],   6, kTRUE);
+        std::string area_s  = fmt_pm(areas[i],  area_errs[i],  6, kTRUE);
+
+        os << std::left
+           << std::setw(w_species) << lab.Data()
+           << std::setw(w_mean)    << mean_s
+           << std::setw(w_sigma)   << sigma_s
+           << std::setw(w_amp)     << amp_s
+           << std::setw(w_area)    << area_s
+           << "\n";
     }
 
-    static void dump_mat(std::ostream& os,
-                                const std::vector<std::vector<Double_t>>& m,
-                                Int_t indent_level = 0,
-                                Int_t indent_width = 2) {
-        os << "[\n";
-        for (size_t i = 0; i < m.size(); ++i) {
-            indent(os, indent_level + indent_width);
-            dump_row_inline(os, m[i]);
-            if (i + 1 < m.size()) os << ",";
-            os << "\n";
-        }
-        indent(os, indent_level);
-        os << "]";
-    }
-
-    void write_slice(const Char_t* mode,
-                     const Char_t* tag,
-                     Double_t sigmaExcl,
-                     const Char_t* refCode,
-                     Int_t slice,
-                     Double_t pmin, Double_t pmax,
-                     Double_t kLeft, Double_t kRight,
-                     const std::vector<std::vector<Double_t>>& frac,
-                     const std::vector<Double_t>& totCont,
-                     const std::vector<Double_t>& totContErr,
-                     const std::vector<Double_t>& area,
-                     const std::vector<Double_t>& area_err,
-                     Double_t D_over_N, Double_t chi2_over_ndf,
-                     Bool_t manualPredictPeaks,
-                     const std::vector<Double_t>& seedMeans,
-                     const std::vector<Double_t>& seedSigmas,
-                     const std::vector<Double_t>& seedAmps,
-                     const std::vector<Double_t>& fitMeans,
-                     const std::vector<Double_t>& fitSigmas,
-                     const std::vector<Double_t>& fitAmps,
-                     const std::vector<Double_t>& err_fitMeans,
-                     const std::vector<Double_t>& err_fitSigmas,
-                     const std::vector<Double_t>& err_fitAmps,
-                     Double_t bg, Double_t bg_err)
-    {
-        f << "{\n"
-          << "\"tag\":\"" << tag << "\",\n"
-          << "\"sigmaExcl\":" << sigmaExcl << ",\n"
-          << "\"ref\":\"" << refCode << "\",\n"
-          << "\"slice\":" << slice << ",\n"
-          << "\"pmin\":" << pmin << ",\n"
-          << "\"pmax\":" << pmax << ",\n"
-          << "\"band_window\":{"
-              << "\"kLeft\":" << kLeft << ", "
-              << "\"kRight\":" << kRight 
-          << "},\n";
-
-        f << "\"frac\":";     dump_mat(f, frac);    f << ",\n";
-        f << "\"totCont\":";  dump_vec(f, totCont); f << ",\n";
-        f << "\"totContErr\":"; dump_vec(f, totContErr); f << ",\n";
-
-        f << "\"peak_areas\":{\n";
-        f << "\"area\":"; dump_vec(f, area); f << ",\n";
-        f << "\"area_err\":";  dump_vec(f, area_err);  f << ",\n";
-        f << "},\n";
-
-        f << "\"fit_quality\":{"
-          << "\"D_over_N\":" << D_over_N << ", "
-          << "\"chi2_over_ndf\":" << chi2_over_ndf
-          << "},\n";
-
-        f << "\"peak_seeding\":{\n";
-        f << "\"mode\":\"" << (manualPredictPeaks ? "manual" : "auto") << "\",\n";
-        f << "\"seedMeans\":";  dump_vec(f, seedMeans);  f << ",\n";
-        f << "\"seedSigmas\":"; dump_vec(f, seedSigmas); f << ",\n";
-        f << "\"seedAmps\":";   dump_vec(f, seedAmps); f << "\n";
-        f << "},\n";
-
-        f << "\"fit_params\":{\n";
-        f << "\"means\":"; dump_vec(f, fitMeans); f << ",\n";
-        f << "\"means_err\":";  dump_vec(f, err_fitMeans); f << ",\n";
-        f << "\"sigmas\":"; dump_vec(f, fitSigmas); f << ",\n";
-        f << "\"sigmas_err\":"; dump_vec(f, err_fitSigmas); f << ",\n";
-        f << "\"amps\":"; dump_vec(f, fitAmps); f << ",\n";
-        f << "\"amps_err\":"; dump_vec(f, err_fitAmps); f << ",\n";
-        f << "\"bg\":" << bg << ", \"bg_err\":" << bg_err ; f << "\n}\n";
-        f << "}\n\n";
-    }
-};
+    return os.str();
+}
 
 static inline Double_t getenv_double(const Char_t* k, Double_t fallback){
   const Char_t* v = gSystem->Getenv(k);
@@ -236,47 +212,52 @@ static inline std::vector<TString> getenv_labels(const Char_t* k, const std::vec
   return out.empty() ? fallback : out;
 }
 
-static int PidFromLabel(TString lab)
-{
-  lab.ReplaceAll(" ", "");
-  lab.ToLower();
-
-  // merged case
-  if (lab.Contains("#mu") && lab.Contains("#pi")) return 1; // choose a convention
-
-  if (lab=="e" || lab=="el" || lab=="electron") return 0;
-  if (lab=="#mu" || lab=="mu" || lab=="#mu+" || lab=="muon") return 1;
-  if (lab=="#pi" || lab=="pi" || lab=="pion") return 2;
-  if (lab=="k" || lab=="#k" || lab=="ka" || lab=="kaon") return 3;
-  if (lab=="p" || lab=="pr" || lab=="proton") return 4;
-
-  return -1; 
-}
-
 void nSigma_Plot_ExclComp(){
     auto help = new helper();
     const Int_t nParts = helper::nParts;
     const Int_t NtrkMax = help->NtrkMax;
-    const Int_t   nBins   = 500;
-    const Double_t xMin   = getenv_double("XMIN", -10.0), xMax = getenv_double("XMAX", 10.0);
-    const Double_t pStart = getenv_double("PSTART", 0.35), pEnd = getenv_double("PEND", 0.45), step = 0.1;
-    const Double_t muWindow = 2.0;
-    const Double_t mergeDistanceFactor = 1.0;
-    const Double_t nEntriesLimit = 1e10; 
+
+    // histogram & slicing 
+    const Int_t nBins = 500;
+    const Double_t xMin = getenv_double("XMIN", -10.0), xMax = getenv_double("XMAX", 10.0);
+    const Double_t pStart = getenv_double("PSTART", 0.45), pEnd = getenv_double("PEND", 0.55), step = 0.1; // momentum slicing (GeV/c)
+
+    // peak finding & fitting config
+    const Double_t muWindow = 2.0; // ±window for μ during fit init
+    const Double_t mergeDistanceFactor = 1.0; // merge seeds if |Δμ| < f·max(σ)
+    const Double_t nEntriesLimit = 1e8;
+
+    // Analysis modes
     const Bool_t FitKaonExclComp = getenv_bool("FITKAONEXCLCOMP", true);
     const Bool_t FitProtonExclComp = getenv_bool("FITPROTONEXCLCOMP", false);
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
-    const Bool_t PeakZoom = false;
+
+    // drawing options
+    const Bool_t drawPredictedLines = true; // vertical lines at predicted peak positions
+    const Bool_t drawSum = true; // overlay total fit
+    const Bool_t drawComponents = true; // overlay individual Gaussian components
+
+    // manual peak control
     const Bool_t manualPredictPeaks = true;
+    const Bool_t interactiveManualPeaks = getenv_bool("INTERACTIVE_MANUAL_PEAKS", manualPredictPeaks);
+    
+    // logging
+    const Bool_t writeSummaryLog = getenv_bool("WRITE_SUMMARY_LOG", true);
+
+    // covariance matrix config
     const Double_t eigenThr = 0.0;
     const Bool_t useOffDiag = false;
     const Bool_t plotCM = false;
+
+    // PID selection: which particle species to run the analysis for (in order: e, π, K, p, d)
     const std::array<Bool_t, nParts> doPid = {{true, false, false, false, false}};
     using PeakPars = std::array<Double_t,4>;
+
+    // exclusion scan config
     const std::vector<Double_t> sigmaExclList = {3.0};
 
-    gROOT->SetBatch(!manualPredictPeaks);
+    gROOT->SetBatch(!(manualPredictPeaks && interactiveManualPeaks)); // if manual peak prediction is on, default to interactive mode (unless explicitly disabled)
     gStyle->SetOptStat(0);
 
     TChain chain("twotauchain");
@@ -305,10 +286,14 @@ void nSigma_Plot_ExclComp(){
 
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
 
-    ndJsonLogger ndlog;
-    ndlog.open(Form("nSigmaEl-Plot-Data-%.2f<p%.2f.ndjson", pStart, pEnd));
-    ndlog.write_config(nBins, xMin, xMax, pStart, pEnd, step, muWindow, mergeDistanceFactor, nEntries, FitKaonExclComp, FitProtonExclComp, plotTPC, plotTOF, PeakZoom, manualPredictPeaks, eigenThr, useOffDiag);
-
+    std::ofstream summaryLog;
+    if (writeSummaryLog) {
+        TString logName = Form("nSigmaSummary_%.2f_%.2f.txt", pStart, pEnd);
+        summaryLog.open(logName.Data(), std::ios::out);
+        summaryLog.imbue(std::locale::classic());
+        summaryLog << std::fixed << std::setprecision(6);
+    }
+    
     auto drawNSigma = [&](Bool_t isTPCmode, Double_t sigmaExcl) {
         const Double_t pMin   = isTPCmode ? pStart : std::max(pStart, 0.4);
         const Int_t    nSteps = Int_t(std::floor((pEnd - pMin) / step + 0.5));
@@ -431,6 +416,17 @@ void nSigma_Plot_ExclComp(){
                     TH1D* h2 = nullptr;
                     h1 = h_no[ref][i];
                     h2 = h_w[ref][i];
+                    if (!drawSum && !drawComponents && !drawPredictedLines) {
+                        c->cd();
+                        c->Clear();
+                        h1->Draw("E1");
+                        c->Print(pdfName);
+
+                        c->Clear();
+                        h2->Draw("E1");
+                        c->Print(pdfName);
+                        continue;
+                    }
                     struct Peak {Double_t A, mu, sigma; Int_t id; std::vector<Int_t> merged_ids;Bool_t alwaysSeparate = false;};
                     std::vector<Peak> seeds;
                     Double_t sliceMin = pEdges[i];
@@ -535,52 +531,72 @@ void nSigma_Plot_ExclComp(){
                         }
                     }
 
-                    Double_t x_low  = xMin;
-                    Double_t x_high = xMax;
-                    
-                    if (PeakZoom) {
-                        const Double_t Nsigma = 8.0;
-                        if (!merged.empty()) {
-                        x_low  = merged[0].mu - Nsigma * merged[0].sigma;
-                        x_high = merged[0].mu + Nsigma * merged[0].sigma;
-                        for (size_t i = 1; i < merged.size(); ++i) {
-                            Double_t this_lo = merged[i].mu - Nsigma * merged[i].sigma;
-                            Double_t this_hi = merged[i].mu + Nsigma * merged[i].sigma;
-                            x_low  = std::min(x_low,  this_lo);
-                            x_high = std::max(x_high, this_hi);
-                        }
-                        x_low  = std::max(x_low,  xMin);
-                        x_high = std::min(x_high, xMax);
-                        }
-                        h1->GetXaxis()->SetRangeUser(x_low, x_high);
-                    }
-
                     Int_t manualNGauss = 0;
                     std::vector<Double_t> manualMeans, manualSigmas, manualAmps;
                     std::vector<TString> manualLabels;
                     if (manualPredictPeaks) {
-                        manualNGauss = getenv_int("MANUAL_NGAUSS", 4);
-                        auto defMeans  = std::vector<Double_t>{-6.0, -5.0, 0.5, 5.0};
-                        auto defSigmas = std::vector<Double_t>{1.0, 1.0, 1.0, 1.0};
-                        auto defAmps   = std::vector<Double_t>{3000, 3000, 300, 10};
-                        auto defLabels = std::vector<TString>{"#mu", "#pi", "e", "K"};
+                        if (interactiveManualPeaks) {
+                            c->cd();
+                            c->Clear();
+                            h1->Draw("E1");
+                            c->Modified();
+                            c->Update();
+                            gSystem->ProcessEvents();
 
-                        auto mMeans  = getenv_vecd("MANUAL_MEANS", defMeans);
-                        auto mSigmas = getenv_vecd("MANUAL_SIGMAS", defSigmas);
-                        auto mAmps   = getenv_vecd("MANUAL_AMPS", defAmps);
-                        auto mLabels = getenv_labels("MANUAL_LABELS", defLabels);
+                            std::cout << "\nSlice " << i
+                                    << " " << pEdges[i] << " < p < " << pEdges[i+1]
+                                    << " ref=" << help->pCodes[ref] << "\n";
 
-                        Int_t L = std::min({manualNGauss, (Int_t)mMeans.size(), (Int_t)mSigmas.size(), (Int_t)mAmps.size()});
-                        if (L <= 0) {
-                          manualNGauss = 0;
+                            std::cout << "How many Gaussians? ";
+                            std::cin >> manualNGauss;
+
+                            if (manualNGauss > 0) {
+                                manualMeans.resize(manualNGauss);
+                                manualSigmas.resize(manualNGauss);
+                                manualAmps.resize(manualNGauss);
+                                manualLabels.resize(manualNGauss);
+
+                                std::cout << "Enter " << manualNGauss << " mean positions: ";
+                                for (Int_t ig = 0; ig < manualNGauss; ++ig) std::cin >> manualMeans[ig];
+
+                                std::cout << "Enter " << manualNGauss << " sigma guesses: ";
+                                for (Int_t ig = 0; ig < manualNGauss; ++ig) std::cin >> manualSigmas[ig];
+
+                                std::cout << "Enter " << manualNGauss << " amplitude guesses: ";
+                                for (Int_t ig = 0; ig < manualNGauss; ++ig) std::cin >> manualAmps[ig];
+
+                                std::cout << "Enter " << manualNGauss << " labels (e, mu, pi, K, p, mu+pi, ...):\n";
+                                for (Int_t ig = 0; ig < manualNGauss; ++ig) {
+                                    std::cout << "label[" << ig << "] = ";
+                                    std::cin >> manualLabels[ig];
+                                }
+                            } else {
+                                manualNGauss = 0;
+                            }
                         } else {
-                          manualNGauss = L;
-                          manualMeans.assign(mMeans.begin(), mMeans.begin()+L);
-                          manualSigmas.assign(mSigmas.begin(), mSigmas.begin()+L);
-                          manualAmps.assign(mAmps.begin(), mAmps.begin()+L);
+                            manualNGauss = getenv_int("MANUAL_NGAUSS", 4);
+                            auto defMeans  = std::vector<Double_t>{-6.0, -5.0, 0.5, 5.0};
+                            auto defSigmas = std::vector<Double_t>{1.0, 1.0, 1.0, 1.0};
+                            auto defAmps   = std::vector<Double_t>{3000, 3000, 300, 10};
+                            auto defLabels = std::vector<TString>{"#mu", "#pi", "e", "K"};
 
-                          Int_t nLabels = std::min((Int_t)mLabels.size(), L);
-                         manualLabels.assign(mLabels.begin(), mLabels.begin() + nLabels);
+                            auto mMeans  = getenv_vecd("MANUAL_MEANS", defMeans);
+                            auto mSigmas = getenv_vecd("MANUAL_SIGMAS", defSigmas);
+                            auto mAmps   = getenv_vecd("MANUAL_AMPS", defAmps);
+                            auto mLabels = getenv_labels("MANUAL_LABELS", defLabels);
+
+                            Int_t L = std::min({manualNGauss, (Int_t)mMeans.size(), (Int_t)mSigmas.size(), (Int_t)mAmps.size()});
+                            if (L <= 0) {
+                                manualNGauss = 0;
+                            } else {
+                                manualNGauss = L;
+                                manualMeans.assign(mMeans.begin(),  mMeans.begin()  + L);
+                                manualSigmas.assign(mSigmas.begin(), mSigmas.begin() + L);
+                                manualAmps.assign(mAmps.begin(),    mAmps.begin()    + L);
+
+                                Int_t nLabels = std::min((Int_t)mLabels.size(), L);
+                                manualLabels.assign(mLabels.begin(), mLabels.begin() + nLabels);
+                            }
                         }
                     }
 
@@ -602,7 +618,124 @@ void nSigma_Plot_ExclComp(){
                             seedAmps[i]   = merged[i].A;   
                         }
                     }
-                    if (nG < 1) { c->Print(pdfName); delete h1; continue; }
+                    if (nG < 1) { c->Print(pdfName); continue;}
+
+                    std::vector<TString> peakLabels(nG);
+                    for (Int_t ig = 0; ig < (Int_t)nG; ++ig) {
+                        if (!manualPredictPeaks) {
+                            peakLabels[ig] = help->LegendFromPids(merged[ig].merged_ids, help);
+                        } else {
+                            if ((Int_t)manualLabels.size() > ig) {
+                                auto pids = help->PidsFromLabel(manualLabels[ig]);
+                                if (!pids.empty()) peakLabels[ig] = help->LegendFromPids(pids, help);
+                                else               peakLabels[ig] = manualLabels[ig];
+                            } else {
+                                peakLabels[ig] = Form("Peak %d", ig+1);
+                            }
+                        }
+                    }
+
+                    auto drawPredictedPeakLines = [&](Double_t yMax, TLegend* leg) {
+                    if (!drawPredictedLines) return;
+                    std::vector<TString> addedPredLabels;
+
+                        if (!manualPredictPeaks) {
+                            for (const auto &pk : merged) {
+                                Double_t muPred = pk.mu;
+                                if (muPred < xMin || muPred > xMax) continue;
+
+                                TLine *l = new TLine(muPred, 0.0, muPred, yMax);
+                                Int_t col = kGray+2;
+                                TString label = "Pred.";
+
+                                if (!pk.merged_ids.empty()) {
+                                    std::vector<Int_t> ids = pk.merged_ids;
+                                    std::sort(ids.begin(), ids.end());
+                                    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+
+                                    const Bool_t hasMu = std::find(ids.begin(), ids.end(), 1) != ids.end();
+                                    const Bool_t hasPi = std::find(ids.begin(), ids.end(), 2) != ids.end();
+
+                                    if (hasMu && hasPi) col = help->colors[1];
+                                    else col = help->colors[ids[0]];
+
+                                    if ((int)ids.size() == 1) {
+                                        label = help->pCodes[ids[0]];
+                                    } else {
+                                        label = "";
+                                        for (size_t j = 0; j < ids.size(); ++j) {
+                                            if (j) label += " + ";
+                                            label += help->pCodes[ids[j]];
+                                        }
+                                    }
+                                }
+
+                                l->SetLineColor(col);
+                                l->SetLineStyle(7);
+                                l->SetLineWidth(2);
+                                l->Draw("same");
+
+                                if (leg && !drawComponents) {
+                                    Bool_t alreadyAdded = kFALSE;
+                                    for (const auto &lab : addedPredLabels) {
+                                        if (lab == label) {
+                                            alreadyAdded = kTRUE;
+                                            break;
+                                        }
+                                    }
+                                    if (!alreadyAdded) {
+                                        leg->AddEntry(l, label, "l");
+                                        addedPredLabels.push_back(label);
+                                    }
+                                }
+                            }
+                        } else {
+                            for (Int_t ig = 0; ig < (Int_t)nG; ++ig) {
+                                Double_t muPred = seedMeans[ig];
+                                if (muPred < xMin || muPred > xMax) continue;
+
+                                TLine *l = new TLine(muPred, 0.0, muPred, yMax);
+
+                                Int_t col = kGray+2;
+                                TString label = Form("Peak %d", ig+1);
+
+                                if (ig < (Int_t)manualLabels.size() && manualLabels[ig].Length()) {
+                                    auto pids = help->PidsFromLabel(manualLabels[ig]);
+
+                                    if (!pids.empty()) {
+                                        const Bool_t hasMu = std::find(pids.begin(), pids.end(), 1) != pids.end();
+                                        const Bool_t hasPi = std::find(pids.begin(), pids.end(), 2) != pids.end();
+
+                                        if (hasMu && hasPi) col = help->colors[1];
+                                        else col = help->colors[pids[0]];
+
+                                        label = help->LegendFromPids(pids, help);
+                                    } else {
+                                        label = manualLabels[ig];
+                                    }
+                                }
+
+                                l->SetLineColor(col);
+                                l->SetLineStyle(7);
+                                l->SetLineWidth(2);
+                                l->Draw("same");
+
+                                if (leg && !drawComponents) {
+                                    Bool_t alreadyAdded = kFALSE;
+                                    for (const auto &lab : addedPredLabels) {
+                                        if (lab == label) {
+                                            alreadyAdded = kTRUE;
+                                            break;
+                                        }
+                                    }
+                                    if (!alreadyAdded) {
+                                        leg->AddEntry(l, label, "l");
+                                        addedPredLabels.push_back(label);
+                                    }
+                                }
+                            }
+                        }
+                    };
 
                     std::ostringstream form;
                     for (size_t i = 0; i < nG; ++i) {
@@ -663,9 +796,22 @@ void nSigma_Plot_ExclComp(){
                         }
                     }
                     help->FitHistogramsExclCompByChi2(h1, h2, sum, nG, cmObj[ref][i], std::vector<TH1D*>{hcm_no[ref][i], hcm_w[ref][i]}, eigenThr, nBins);
+                    
                     c->Clear();
                     h1->Draw("E1");
                     Double_t yMax1 = 1.25 * h1->GetMaximum();
+                    
+                    TLegend *leg1 = nullptr;
+                    if (drawSum || drawComponents || drawPredictedLines) {
+                        leg1 = new TLegend(0.80, 0.70, 0.90, 0.90);
+                        leg1->SetBorderSize(1);
+                        leg1->SetMargin(0.45);
+                        leg1->SetFillColorAlpha(kWhite, 0.8);
+                        leg1->SetTextSize(0.030);
+                        leg1->SetTextFont(42);
+                    }
+                    drawPredictedPeakLines(yMax1, leg1);
+
                     std::vector<Double_t> par(sum->GetNpar());
                     std::vector<Double_t> err(sum->GetNpar());
                     for(Int_t i=0; i<sum->GetNpar(); ++i)  {
@@ -808,7 +954,7 @@ void nSigma_Plot_ExclComp(){
                         Double_t var_wK = dFdA*dFdA * eA2*eA2 + dFdS*dFdS * eS*eS;
                         err_areas_wK[ig] = TMath::Sqrt(var_wK);
                     }
-                    const Double_t D_over_N      = (N   > 0 ? D / N : std::numeric_limits<Double_t>::quiet_NaN());
+                    const Double_t D_over_N = (N   > 0 ? D / N : std::numeric_limits<Double_t>::quiet_NaN());
                     const Double_t chi2_over_ndf = (ndf > 0 ? chi2 / ndf : std::numeric_limits<Double_t>::quiet_NaN());
 
                     std::vector<Double_t> fitMeans(nG), fitSigmas(nG);
@@ -835,35 +981,63 @@ void nSigma_Plot_ExclComp(){
                     auto band_no = computeBandFractions(0); 
                     auto band_w = computeBandFractions(1); 
 
-                    ndlog.write_slice(
-                        suffix.Data(), "noExcl", sigmaExcl, help->pNames[ref],
-                        i, pEdges[i], pEdges[i+1],
-                        band_no.kLeft, band_no.kRight, band_no.frac, band_no.totCont, band_no.totContErr,
-                        areas_noK, err_areas_noK,   
-                        D_over_N, chi2_over_ndf,
-                        manualPredictPeaks, seedMeans, seedSigmas, seedAmps,
-                        fitMeans, fitSigmas, fitAmps_noExcl, e_fitMeans, e_fitSigmas, e_fitAmps_noExcl,
-                        bkg_noExcl, ebkg_noExcl);
+                    if (writeSummaryLog && summaryLog.is_open()) {
+                        summaryLog
+                            << "mode: " << suffix.Data() << "\n"
+                            << "tag: noExcl\n"
+                            << "sigmaExcl: " << sigmaExcl << "\n"
+                            << "ref: " << help->pNames[ref] << "\n"
+                            << "slice: " << i << "\n"
+                            << "pmin: " << pEdges[i] << "\n"
+                            << "pmax: " << pEdges[i+1] << "\n"
+                            << "chi2_ndf: " << chi2_over_ndf << "\n"
+                            << "labels: " << labels_to_txt(peakLabels) << "\n\n"
+                            << "fit_table:\n"
+                            << species_table_to_txt(peakLabels,
+                                                    fitMeans, e_fitMeans,
+                                                    fitSigmas, e_fitSigmas,
+                                                    fitAmps_noExcl, e_fitAmps_noExcl,
+                                                    areas_noK, err_areas_noK)
+                            << "\n"
+                            << "background: " << bkg_noExcl << "±" << ebkg_noExcl << "\n\n"
+                            << "overlap_matrix:\n" << labeled_mat_to_txt(peakLabels, band_no.frac) << "\n"
+                            << "total_cont:     " << vec_to_txt(band_no.totCont) << "\n"
+                            << "total_cont_err: " << vec_to_txt(band_no.totContErr) << "\n\n"
+                            << "----------------------------------------\n\n";
 
-                    ndlog.write_slice(
-                        suffix.Data(), "wExcl", sigmaExcl, help->pNames[ref],
-                        i, pEdges[i], pEdges[i+1],
-                        band_w.kLeft, band_w.kRight, band_w.frac, band_w.totCont, band_w.totContErr,
-                        areas_wK,  err_areas_wK,
-                        D_over_N, chi2_over_ndf,
-                        manualPredictPeaks, seedMeans, seedSigmas, seedAmps,
-                        fitMeans, fitSigmas, fitAmps_wExcl, e_fitMeans, e_fitSigmas, e_fitAmps_wExcl,
-                        bkg_wExcl, ebkg_wExcl);
+                        summaryLog
+                            << "mode: " << suffix.Data() << "\n"
+                            << "tag: wExcl\n"
+                            << "sigmaExcl: " << sigmaExcl << "\n"
+                            << "ref: " << help->pNames[ref] << "\n"
+                            << "slice: " << i << "\n"
+                            << "pmin: " << pEdges[i] << "\n"
+                            << "pmax: " << pEdges[i+1] << "\n"
+                            << "chi2_ndf: " << chi2_over_ndf << "\n"
+                            << "labels: " << labels_to_txt(peakLabels) << "\n\n"
+                            << "fit_table:\n"
+                            << species_table_to_txt(peakLabels,
+                                                    fitMeans, e_fitMeans,
+                                                    fitSigmas, e_fitSigmas,
+                                                    fitAmps_wExcl, e_fitAmps_wExcl,
+                                                    areas_wK, err_areas_wK)
+                            << "\n"
+                            << "background: " << bkg_wExcl << "±" << ebkg_wExcl << "\n\n"
+                            << "overlap_matrix:\n" << labeled_mat_to_txt(peakLabels, band_w.frac) << "\n"
+                            << "total_cont:     " << vec_to_txt(band_w.totCont) << "\n"
+                            << "total_cont_err: " << vec_to_txt(band_w.totContErr) << "\n\n"
+                            << "----------------------------------------\n\n";
+                    }
 
                     const Int_t nPoints = 500; 
-                    Double_t dx = (x_high - x_low)/(nPoints-1);
+                    Double_t dx = (xMax - xMin)/(nPoints-1);
                     std::vector<Double_t> xv(nPoints), y1(nPoints), y2(nPoints);
 
                     const double bw1 = h1->GetXaxis()->GetBinWidth(1);
                     const double bw2 = h2->GetXaxis()->GetBinWidth(1);
 
                     for(Int_t ip=0; ip<nPoints; ++ip) {
-                        Double_t x = x_low + ip*dx;
+                        Double_t x = xMin + ip*dx;
                         xv[ip] = x;
                         Double_t yy1 = par[offP1] * bw1;
                         Double_t yy2 = par[offP2] * bw2;
@@ -879,168 +1053,159 @@ void nSigma_Plot_ExclComp(){
                         y2[ip] = yy2;
                     }
 
-                    auto gSum1 = new TGraph(nPoints, xv.data(), y1.data());
-                    gSum1->SetLineColor(kRed);
-                    gSum1->SetLineWidth(2);
-                    gSum1->Draw("L SAME");
+                    TGraph* gSum1 = nullptr;
+                    if (drawSum) {
+                        gSum1 = new TGraph(nPoints, xv.data(), y1.data());
+                        gSum1->SetLineColor(kRed);
+                        gSum1->SetLineWidth(2);
+                        gSum1->Draw("L SAME");
+                        if (leg1) leg1->AddEntry(gSum1, "Sum", "l");
+                    }
 
-                    auto gSum2 = new TGraph(nPoints, xv.data(), y2.data());
-                    gSum2->SetLineColor(kRed);
-                    gSum2->SetLineWidth(2);
+                    TGraph* gSum2 = nullptr;
+                    if (drawSum) {
+                        gSum2 = new TGraph(nPoints, xv.data(), y2.data());
+                        gSum2->SetLineColor(kRed);
+                        gSum2->SetLineWidth(2);
+                    }
 
-                    //if (!manualPredictPeaks) {
-                    //    for (const auto &pk : merged) {
-                    //        Double_t mu = pk.mu;
-                    //        TLine *l = new TLine(mu, 0, mu, yMax1);
-                    //        Int_t col  = (pk.id >= 0) ? help->colors[pk.id] : kGray+2;
-                    //        l->SetLineColor(col);
-                    //        l->Draw();
-                    //    }
-                    //}
-                    //else {
-                    //    for (Int_t i = 0; i < nG; ++i) {
-                    //        Double_t mu = seedMeans[i];
-                    //        TLine *l = new TLine(mu, 0, mu, yMax1);
-                    //        l->SetLineColor(help->colors[i % nParts]);
-                    //        l->Draw();
-                    //    }
-                    //}
-
-                    TLegend *leg1 = new TLegend(0.84, 0.70, 0.90, 0.90);
-                    leg1->SetBorderSize(1); 
-                    leg1->SetMargin(0.45);
-                    leg1->SetFillColorAlpha(kWhite, 0.8);
                         
                     for (Int_t i = 0; i < nG; ++i) {
                         if (sum->GetParameter(offA1 + i) < 0) continue;
-                        TF1 *g1 = new TF1(Form("g_%d_%d", ref, i), "gaus", x_low, x_high);
+
+                        TF1 *g1 = new TF1(Form("g1_%d_%d", ref, i), "gaus", xMin, xMax);
                         g1->SetParameters(
                             sum->GetParameter(offA1 + i) * bw1,
                             sum->GetParameter(offM + i),
                             sum->GetParameter(offS + i)
                         );
-                        if (!manualPredictPeaks) {
-                            Int_t col = (merged[i].id >= 0) ? help->colors[merged[i].id] : kGray+2;
-                            g1->SetLineColor(col);
-                        } else {
-                            int pid = -1;
-                            if ((Int_t)manualLabels.size() > i) pid = PidFromLabel(manualLabels[i]);
-
-                            if (pid >= 0) g1->SetLineColor(help->colors[pid]);
-                            else          g1->SetLineColor(kGray+2);  // fallback  
-                        }
-                        g1->SetLineStyle(2);
-                        g1->SetNpx(500);
-                        g1->Draw("same");
-
                         TString label;
+                        Int_t col = kGray+2;
                         if (!manualPredictPeaks) {
-                            auto &ids = merged[i].merged_ids;
+                            // automatic mode: use merged IDs
+                            col = (merged[i].id >= 0) ? help->colors[merged[i].id] : kGray+2;
+                            g1->SetLineColor(col);
+
+                            auto ids = merged[i].merged_ids;
                             std::sort(ids.begin(), ids.end());
                             ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
-                            if (ids.size()==1) {
+
+                            if ((int)ids.size() == 1) {
                                 label = help->pCodes[ids[0]];
                             } else {
-                                for (size_t j=0; j<ids.size(); ++j) {
+                                for (size_t j = 0; j < ids.size(); ++j) {
                                     if (j) label += " + ";
                                     label += help->pCodes[ids[j]];
                                 }
                             }
                         } else {
-                            if ((Int_t)manualLabels.size() > i) label = manualLabels[i];
-                            else label = Form("Peak %d", i+1);
+                            TString raw = ((Int_t)manualLabels.size() > i) ? manualLabels[i] : "";
+
+                            auto pids = help->PidsFromLabel(raw);
+
+                            const Bool_t hasMu = (std::find(pids.begin(), pids.end(), 1) != pids.end());
+                            const Bool_t hasPi = (std::find(pids.begin(), pids.end(), 2) != pids.end());
+
+                            Int_t colorPid = -1;
+                            if (hasMu && hasPi) colorPid = 1;
+                            else if ((Int_t)pids.size() == 1) colorPid = pids[0];
+                            else if (!pids.empty()) colorPid = pids[0];
+
+                            col = (colorPid >= 0) ? help->colors[colorPid] : kGray+2;
+                            label = !pids.empty() ? help->LegendFromPids(pids, help)
+                                                : (raw.Length() ? raw : Form("Peak %d", i+1));
+                            g1->SetLineColor(col);
                         }
-                        leg1->AddEntry(g1, label, "l");
-                        leg1->AddEntry(gSum1, "Sum", "l");
+
+                        g1->SetLineStyle(2);
+                        g1->SetNpx(500);
+
+                        if (drawComponents) {
+                            g1->Draw("same");
+                            if (leg1) leg1->AddEntry(g1, label, "l");
+                        }
+
                     }
-                    leg1->Draw();
-                    //TPaveText *pt1=new TPaveText(0.02,0.90,0.15,0.99,"NDC");
-                    //pt1->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
-                    //pt1->SetFillColorAlpha(0,0); 
-                    //pt1->Draw("same");
+                    if(leg1) leg1->Draw();
                     c->Print(pdfName);
-                    delete leg1;
-                    //delete pt1;
+                    if(leg1) delete leg1;
 
                     c->Clear();
                     h2->Draw("E1");
-                    gSum2->Draw("L SAME");
+                    if (drawSum && gSum2) gSum2->Draw("L SAME");
                     Double_t yMax2 = 1.25 * h2->GetMaximum();
-                    //if (!manualPredictPeaks) {
-                    //    for (const auto &pk : merged) {
-                    //        Double_t mu = pk.mu;
-                    //        TLine *l = new TLine(mu, 0, mu, yMax2);
-                    //        Int_t col = (pk.id >= 0) ? help->colors[pk.id] : kGray+2;
-                    //        l->SetLineColor(col);
-                    //        l->Draw();
-                    //    }
-                    //}
-                    //else {
-                    //    for (Int_t i = 0; i < nG; ++i) {
-                    //        Double_t mu = seedMeans[i];
-                    //        TLine *l = new TLine(mu, 0, mu, yMax2);
-                    //        l->SetLineColor(help->colors[i % nParts]);
-                    //        l->Draw();
-                    //    }
-                    //}
 
-                    TLegend *leg2 = new TLegend(0.84, 0.70, 0.90, 0.90);
-                    leg2->SetBorderSize(1); 
-                    leg2->SetMargin(0.45);
-                    leg2->SetFillColorAlpha(kWhite, 0.8);
+                    TLegend *leg2 = nullptr;
+                    if (drawSum || drawComponents || drawPredictedLines) {
+                        leg2 = new TLegend(0.80, 0.70, 0.90, 0.90);
+                        leg2->SetBorderSize(1); 
+                        leg2->SetMargin(0.45);
+                        leg2->SetFillColorAlpha(kWhite, 0.8);
+                        leg2->SetTextSize(0.030);
+                        leg2->SetTextFont(42);
+                        if (drawSum && gSum2) leg2->AddEntry(gSum2, "Sum", "l");
+                    }
+                    drawPredictedPeakLines(yMax2, leg2);
 
                     for (Int_t i = 0; i < nG; ++i) {
                         if (sum->GetParameter(offA2 + i) < 0) continue;
-                        TF1 *g2 = new TF1(Form("g_%d_%d", ref, i), "gaus", x_low, x_high);
+                        TF1 *g2 = new TF1(Form("g2_%d_%d", ref, i), "gaus", xMin, xMax);
                         g2->SetParameters(
                             sum->GetParameter(offA2 + i) * bw2,
                             sum->GetParameter(offM + i),
                             sum->GetParameter(offS + i)
                         );
-                        if (!manualPredictPeaks) {
-                            Int_t col = (merged[i].id >= 0) ? help->colors[merged[i].id] : kGray+2;
-                            g2->SetLineColor(col);
-                        } else {
-                            int pid = -1;
-                            if ((Int_t)manualLabels.size() > i) pid = PidFromLabel(manualLabels[i]);
-
-                            if (pid >= 0) g2->SetLineColor(help->colors[pid]);
-                            else          g2->SetLineColor(kGray+2);  // fallback
-                        }
-                        g2->SetLineStyle(2);
-                        g2->SetNpx(500);
-                        g2->Draw("same");
 
                         TString label;
+                        Int_t col = kGray+2;
                         if (!manualPredictPeaks) {
-                            auto &ids = merged[i].merged_ids;
+                            // automatic mode: use merged IDs
+                            col = (merged[i].id >= 0) ? help->colors[merged[i].id] : kGray+2;
+                            g2->SetLineColor(col);
+
+                            auto ids = merged[i].merged_ids;
                             std::sort(ids.begin(), ids.end());
                             ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
-                            if (ids.size() == 1) {
+
+                            if ((int)ids.size() == 1) {
                                 label = help->pCodes[ids[0]];
                             } else {
-                                for (size_t j=0; j<ids.size(); ++j) {
+                                for (size_t j = 0; j < ids.size(); ++j) {
                                     if (j) label += " + ";
                                     label += help->pCodes[ids[j]];
                                 }
                             }
                         } else {
-                            if ((Int_t)manualLabels.size() > i) label = manualLabels[i];
-                            else label = Form("Peak %d", i+1);
+                            TString raw = ((Int_t)manualLabels.size() > i) ? manualLabels[i] : "";
+
+                            auto pids = help->PidsFromLabel(raw);
+
+                            const Bool_t hasMu = (std::find(pids.begin(), pids.end(), 1) != pids.end());
+                            const Bool_t hasPi = (std::find(pids.begin(), pids.end(), 2) != pids.end());
+
+                            Int_t colorPid = -1;
+                            if (hasMu && hasPi) colorPid = 1;
+                            else if ((Int_t)pids.size() == 1) colorPid = pids[0];
+                            else if (!pids.empty()) colorPid = pids[0];
+
+                            col = (colorPid >= 0) ? help->colors[colorPid] : kGray+2;
+                            label = !pids.empty() ? help->LegendFromPids(pids, help)
+                                                : (raw.Length() ? raw : Form("Peak %d", i+1));
+                            g2->SetLineColor(col);
                         }
-                        leg2->AddEntry(g2, label, "l");
-                        leg2->AddEntry(gSum2, "Sum", "l");
+                        g2->SetLineStyle(2);
+                        g2->SetNpx(500);
+
+                        if (drawComponents) {
+                            g2->Draw("same");
+                            if (leg2) leg2->AddEntry(g2, label, "l");
+                        }
                     }      
-                    leg2->Draw();   
-                    //TPaveText *pt2=new TPaveText(0.02,0.90,0.15,0.99,"NDC");
-                    //pt2->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
-                    //pt2->SetFillColorAlpha(0,0); 
-                    //pt2->Draw("same");
+                    if (leg2) leg2->Draw();   
                     c->Print(pdfName);
-                    //delete pt2;
-                    delete leg2;
+                    if (leg2) delete leg2;
                     delete sum;
-                }    
+                }
                 c->Print(pdfName+"]"); 
                 if (plotCM) {
                     cCM->Print(cmPdf + "]"); 
