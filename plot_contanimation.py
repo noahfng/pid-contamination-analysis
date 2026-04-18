@@ -372,7 +372,272 @@ def plot_contamination_difference_all_windows(
     plt.tight_layout()
     plt.show()
 
+def plot_avg_cont_vs_retained_yield(
+    mode="yield_weighted",
+    show_no_veto=True,
+    show_veto=True,
+    title_size=20,
+    label_size=18,
+    tick_size=16,
+    legend_size=14,
+    marker_size=7,
+    line_width=1.5,
+    annotate_points=True,
+):
+    plt.figure(figsize=(9, 6))
+
+    # reference yield for retention normalization
+    ref_yield = np.sum(arr(DATA[3.0]["yield"]))
+    ref_yield_err = np.sqrt(np.sum(arr(DATA[3.0]["yield_err"])**2))
+
+    if show_no_veto:
+        xvals, xerrs, yvals, yerrs = [], [], [], []
+
+        for ns in NSIGMA_WINDOWS:
+            yld = arr(DATA[ns]["yield"])
+            yld_err = arr(DATA[ns]["yield_err"])
+
+            total_yld = np.sum(yld)
+            total_yld_err = np.sqrt(np.sum(yld_err**2))
+
+            retained = total_yld / ref_yield
+            retained_err = np.sqrt(
+                (total_yld_err / ref_yield)**2 +
+                (total_yld * ref_yield_err / ref_yield**2)**2
+            )
+
+            if mode == "yield_weighted":
+                cont, cont_err = yield_weighted_average(
+                    DATA[ns]["no_veto"]["cont"],
+                    DATA[ns]["no_veto"]["cont_err"],
+                    DATA[ns]["yield"],
+                    DATA[ns]["yield_err"]
+                )
+            else:
+                cont, cont_err = weighted_constant_fit(
+                    DATA[ns]["no_veto"]["cont"],
+                    DATA[ns]["no_veto"]["cont_err"]
+                )
+
+            xvals.append(retained)
+            xerrs.append(retained_err)
+            yvals.append(cont)
+            yerrs.append(cont_err)
+
+        plt.errorbar(
+            xvals,
+            yvals,
+            xerr=xerrs,
+            yerr=yerrs,
+            fmt="o-",
+            capsize=3,
+            markersize=marker_size,
+            linewidth=line_width,
+            label="No Exclusion"
+        )
+
+        if annotate_points:
+            for x, y, ns in zip(xvals, yvals, NSIGMA_WINDOWS):
+                plt.annotate(f"{ns}", (x, y), xytext=(5, 5), textcoords="offset points", fontsize=12)
+
+    if show_veto:
+        xvals, xerrs, yvals, yerrs = [], [], [], []
+
+        for ns in NSIGMA_WINDOWS:
+            yld = arr(DATA[ns]["yield"])
+            yld_err = arr(DATA[ns]["yield_err"])
+
+            total_yld = np.sum(yld)
+            total_yld_err = np.sqrt(np.sum(yld_err**2))
+
+            retained = total_yld / ref_yield
+            retained_err = np.sqrt(
+                (total_yld_err / ref_yield)**2 +
+                (total_yld * ref_yield_err / ref_yield**2)**2
+            )
+
+            if mode == "yield_weighted":
+                cont, cont_err = yield_weighted_average(
+                    DATA[ns]["veto"]["cont"],
+                    DATA[ns]["veto"]["cont_err"],
+                    DATA[ns]["yield"],
+                    DATA[ns]["yield_err"]
+                )
+            else:
+                cont, cont_err = weighted_constant_fit(
+                    DATA[ns]["veto"]["cont"],
+                    DATA[ns]["veto"]["cont_err"]
+                )
+
+            xvals.append(retained)
+            xerrs.append(retained_err)
+            yvals.append(cont)
+            yerrs.append(cont_err)
+
+        plt.errorbar(
+            xvals,
+            yvals,
+            xerr=xerrs,
+            yerr=yerrs,
+            fmt="s-",
+            capsize=3,
+            markersize=marker_size,
+            linewidth=line_width,
+            label="Exclusion"
+        )
+
+        if annotate_points:
+            for x, y, ns in zip(xvals, yvals, NSIGMA_WINDOWS):
+                plt.annotate(f"{ns}", (x, y), xytext=(5, -12), textcoords="offset points", fontsize=12)
+
+    plt.xlabel("Retained electron yield", fontsize=label_size)
+    plt.ylabel("Average electron contamination", fontsize=label_size)
+    plt.title("Average contamination vs retained electron yield", fontsize=title_size)
+
+    plt.xticks(fontsize=tick_size)
+    plt.yticks(fontsize=tick_size)
+    plt.grid(True, alpha=0.3)
+    plt.legend(fontsize=legend_size)
+    plt.tight_layout()
+    plt.show()
+
 validate()
+
+def plot_avg_cont_vs_retained_yield(
+    mode="yield_weighted",
+    show_no_veto=True,
+    show_veto=True,
+    title_size=20,
+    label_size=18,
+    tick_size=16,
+    legend_size=14,
+    marker_size=7,
+    line_width=1.5,
+    annotation_size=13,
+):
+    plt.figure(figsize=(9, 6))
+
+    # reference total yield at widest window
+    y_ref = np.sum(arr(DATA[3.0]["yield"]))
+    y_ref_err = np.sqrt(np.sum(arr(DATA[3.0]["yield_err"])**2))
+
+    def get_avg_cont_and_err(ns, cfg):
+        if mode == "yield_weighted":
+            return yield_weighted_average(
+                DATA[ns][cfg]["cont"],
+                DATA[ns][cfg]["cont_err"],
+                DATA[ns]["yield"],
+                DATA[ns]["yield_err"]
+            )
+        elif mode == "constant_fit":
+            return weighted_constant_fit(
+                DATA[ns][cfg]["cont"],
+                DATA[ns][cfg]["cont_err"]
+            )
+        else:
+            raise ValueError("mode must be 'yield_weighted' or 'constant_fit'")
+
+    if show_no_veto:
+        xvals, xerrs, yvals, yerrs = [], [], [], []
+
+        for ns in NSIGMA_WINDOWS:
+            y = arr(DATA[ns]["yield"])
+            yerr = arr(DATA[ns]["yield_err"])
+
+            y_tot = np.sum(y)
+            y_tot_err = np.sqrt(np.sum(yerr**2))
+
+            # retained yield relative to sigma_window = 3.0
+            x = y_tot / y_ref
+            xerr = np.sqrt(
+                (y_tot_err / y_ref)**2 +
+                ((y_tot * y_ref_err) / (y_ref**2))**2
+            )
+
+            cont_avg, cont_avg_err = get_avg_cont_and_err(ns, "no_veto")
+
+            xvals.append(x)
+            xerrs.append(xerr)
+            yvals.append(cont_avg)
+            yerrs.append(cont_avg_err)
+
+        plt.errorbar(
+            xvals,
+            yvals,
+            xerr=xerrs,
+            yerr=yerrs,
+            fmt="o-",
+            capsize=3,
+            markersize=marker_size,
+            linewidth=line_width,
+            label="No Exclusion"
+        )
+
+        for x, y, ns in zip(xvals, yvals, NSIGMA_WINDOWS):
+            plt.annotate(
+                f"{ns}",
+                (x, y),
+                textcoords="offset points",
+                xytext=(6, 6),
+                fontsize=annotation_size
+            )
+
+    if show_veto:
+        xvals, xerrs, yvals, yerrs = [], [], [], []
+
+        for ns in NSIGMA_WINDOWS:
+            y = arr(DATA[ns]["yield"])
+            yerr = arr(DATA[ns]["yield_err"])
+
+            y_tot = np.sum(y)
+            y_tot_err = np.sqrt(np.sum(yerr**2))
+
+            x = y_tot / y_ref
+            xerr = np.sqrt(
+                (y_tot_err / y_ref)**2 +
+                ((y_tot * y_ref_err) / (y_ref**2))**2
+            )
+
+            cont_avg, cont_avg_err = get_avg_cont_and_err(ns, "veto")
+
+            xvals.append(x)
+            xerrs.append(xerr)
+            yvals.append(cont_avg)
+            yerrs.append(cont_avg_err)
+
+        plt.errorbar(
+            xvals,
+            yvals,
+            xerr=xerrs,
+            yerr=yerrs,
+            fmt="o-",
+            capsize=3,
+            markersize=marker_size,
+            linewidth=line_width,
+            label="Exclusion"
+        )
+
+        for x, y, ns in zip(xvals, yvals, NSIGMA_WINDOWS):
+            plt.annotate(
+                f"{ns}",
+                (x, y),
+                textcoords="offset points",
+                xytext=(6, -14),
+                fontsize=annotation_size
+            )
+
+    plt.xlabel("Retained electron yield", fontsize=label_size)
+    plt.ylabel("Average electron contamination", fontsize=label_size)
+    plt.title("Average contamination vs retained electron yield", fontsize=title_size)
+
+    plt.xticks(fontsize=tick_size)
+    plt.yticks(fontsize=tick_size)
+    plt.grid(True, alpha=0.3)
+    plt.legend(fontsize=legend_size)
+    plt.tight_layout()
+    plt.show()
+
+plot_avg_cont_vs_retained_yield(mode="yield_weighted", show_no_veto=True, show_veto=True)
 
 #plot_cont_vs_momentum_all_windows(cfg="no_Exclusion")
 #plot_cont_vs_momentum_all_windows(cfg="Exclusion")
@@ -384,5 +649,5 @@ validate()
 #plot_cont_vs_momentum(nsigma=3.0, show_no_veto=True, show_veto=True)
 #
 #plot_avg_cont_vs_nsigma(mode="yield_weighted", show_no_veto=True, show_veto=True)
-
-plot_contamination_difference_all_windows()
+#
+#plot_contamination_difference_all_windows()
