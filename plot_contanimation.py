@@ -320,15 +320,69 @@ def plot_avg_cont_vs_nsigma(mode="yield_weighted", show_no_veto=True, show_veto=
     plt.tight_layout()
     plt.show()
 
+def plot_contamination_difference_all_windows(
+    title_size=20,
+    label_size=18,
+    tick_size=16,
+    legend_size=14,
+    marker_size=6,
+    line_width=1.5,
+):
+    plt.figure(figsize=(9, 6))
+
+    ymax = 0.0
+    ymin = 0.0
+
+    for ns in NSIGMA_WINDOWS:
+        cont_before = arr(DATA[ns]["no_veto"]["cont"])
+        err_before  = arr(DATA[ns]["no_veto"]["cont_err"])
+
+        cont_after = arr(DATA[ns]["veto"]["cont"])
+        err_after  = arr(DATA[ns]["veto"]["cont_err"])
+
+        delta_cont = cont_before - cont_after
+        delta_err = np.sqrt(err_before**2 + err_after**2)
+
+        plt.errorbar(
+            P_CENTERS,
+            delta_cont,
+            yerr=delta_err,
+            fmt="o-",
+            capsize=3,
+            markersize=marker_size,
+            linewidth=line_width,
+            label=rf"$\sigma_{{\mathrm{{window}}}} = {ns}$"
+        )
+
+        ymax = max(ymax, np.max(delta_cont + delta_err))
+        ymin = min(ymin, np.min(delta_cont - delta_err))
+
+    plt.xlabel(r"$p$ (GeV/$c$)", fontsize=label_size)
+    plt.ylabel("Contamination reduction", fontsize=label_size)
+    plt.title("Contamination reduction from vetoes vs momentum", fontsize=title_size)
+
+    plt.axvline(x=0.65, linestyle="--", linewidth=1.5, color="black")
+    plt.text(0.66, ymax*0.7, "K → K+p Exclusion", rotation=90, fontsize=16)
+
+    plt.xticks(fontsize=tick_size)
+    plt.yticks(fontsize=tick_size)
+    plt.ylim(1.05 * ymin, 1.05 * ymax)
+    plt.grid(True, alpha=0.3)
+    plt.legend(fontsize=legend_size)
+    plt.tight_layout()
+    plt.show()
+
 validate()
 
-plot_cont_vs_momentum_all_windows(cfg="no_Exclusion")
-plot_cont_vs_momentum_all_windows(cfg="Exclusion")
+#plot_cont_vs_momentum_all_windows(cfg="no_Exclusion")
+#plot_cont_vs_momentum_all_windows(cfg="Exclusion")
+#
+#plot_cont_vs_momentum(nsigma=0.5, show_no_veto=True, show_veto=True)
+#plot_cont_vs_momentum(nsigma=1.0, show_no_veto=True, show_veto=True)
+#plot_cont_vs_momentum(nsigma=1.5, show_no_veto=True, show_veto=True)
+#plot_cont_vs_momentum(nsigma=2.0, show_no_veto=True, show_veto=True)
+#plot_cont_vs_momentum(nsigma=3.0, show_no_veto=True, show_veto=True)
+#
+#plot_avg_cont_vs_nsigma(mode="yield_weighted", show_no_veto=True, show_veto=True)
 
-plot_cont_vs_momentum(nsigma=0.5, show_no_veto=True, show_veto=True)
-plot_cont_vs_momentum(nsigma=1.0, show_no_veto=True, show_veto=True)
-plot_cont_vs_momentum(nsigma=1.5, show_no_veto=True, show_veto=True)
-plot_cont_vs_momentum(nsigma=2.0, show_no_veto=True, show_veto=True)
-plot_cont_vs_momentum(nsigma=3.0, show_no_veto=True, show_veto=True)
-
-plot_avg_cont_vs_nsigma(mode="yield_weighted", show_no_veto=True, show_veto=True)
+plot_contamination_difference_all_windows()
